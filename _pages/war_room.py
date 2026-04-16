@@ -68,7 +68,7 @@ except Exception as e:
     pass
 
 if best_id is not None:
-    print(f"ATTACK {{best_id}}")
+    print(f"__SYS_BOT_MOVE__ {{best_id}}")
 """
     stdout, stderr = run_code_safe(injected_code, timeout=2)
     return stdout.strip(), stderr.strip()
@@ -153,10 +153,11 @@ def show_war_room():
                 # skip dead teams
                 if gs["hp"].get(tname, 0) <= 0: continue
                 stdout, err = execute_bot(bcode, tname, gs, teams)
-                if "ATTACK" in stdout:
-                    parts = stdout.replace(",", " ").split()
+                if "__SYS_BOT_MOVE__" in stdout:
                     try:
-                        cell_idx = int([p for p in parts if p.isdigit()][0])
+                        # Extract the exact ID immediately following the secure token
+                        token_part = stdout.split("__SYS_BOT_MOVE__")[1].strip()
+                        cell_idx = int(token_part.split()[0])
                         ap = int(gs["ap"].get(tname, 0))
                         if ap >= ATTACK_COST_AP and gs["grid"][cell_idx] != tname:
                             prev = gs["grid"][cell_idx]
@@ -300,6 +301,11 @@ def show_war_room():
         db_code = gs.get("bots", {}).get(MT, "# Auto-Generated\\nprint('DEFEND')")
         stdout, err = execute_bot(db_code, MT, gs, teams)
         plan_msg = stdout if stdout else "(No Output / Formatting Error)"
+        if "__SYS_BOT_MOVE__" in plan_msg:
+            try:
+                cell_id = plan_msg.split("__SYS_BOT_MOVE__")[1].strip().split()[0]
+                plan_msg = f"ATTACK CELL {cell_id}"
+            except: pass
         st.markdown(f"""
         <div class="warning-popup">
             <h3 style="font-family:'Orbitron',monospace;color:#FF2244;margin:0 0 10px 0;letter-spacing:4px">⚠️ IMMINENT BOT EXECUTION</h3>
@@ -696,7 +702,14 @@ def show_war_room():
                 if serr:
                     st.error(f"Logic Error: {serr}")
                 else:
-                    st.info(f"Bot Output: {sout or 'None'}")
+                    if "__SYS_BOT_MOVE__" in sout:
+                        try:
+                            tid = sout.split("__SYS_BOT_MOVE__")[1].strip().split()[0]
+                            st.success(f"✔️ Valid Attack Target Evaluated: Cell {tid}")
+                        except:
+                            st.warning("⚠️ Invalid return target formatting.")
+                    else:
+                        st.info(f"Bot Output: {sout or 'None'}")
         
         with col_man:
             if gs.get("bypassed", {}).get(MT):
