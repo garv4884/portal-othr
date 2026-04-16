@@ -1,0 +1,11 @@
+[server]
+headless = true
+
+[client]
+showErrorDetails = true
+
+[runner]
+# Disable multi-page auto-discovery from the pages/ folder
+# by placing our modules there but NOT having them be top-level page files
+# (Streamlit >=1.36 honors this)
+magicEnabled = false
