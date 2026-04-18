@@ -210,6 +210,17 @@ def load_gs():
 def save_gs(s): R.set("ot:state", json.dumps(s))
 def reset_gs(): R.delete("ot:state")
 
+def get_timer_state(gs):
+    """Refined Global Timer: Calculates time until epoch end from server state."""
+    try:
+        end_time = datetime.fromisoformat(gs["epoch_end"])
+        remaining = max(0.0, (end_time - datetime.utcnow()).total_seconds())
+        # Snap to 10s intervals for cleaner backend sync reporting
+        return remaining
+    except Exception:
+        # Fallback to default if state is corrupted
+        return 900.0
+
 def acquire_epoch_lock(epoch_num):
     key = f"ot:epoch_lock_{epoch_num}"
     if R.setnx(key, "1"):

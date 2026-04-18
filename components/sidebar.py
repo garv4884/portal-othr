@@ -101,7 +101,7 @@ def render_sidebar(gs, tc, dn, MT, my_hp, my_ap, my_terr,
             </div>
             <div class="sb-row" style="margin-top:6px">
                 <span class="sb-lbl">REMAINING</span>
-                <span style="font-family:'Orbitron',monospace;font-size:1rem;font-weight:700;
+                <span id="ot-sidebar-timer" style="font-family:'Orbitron',monospace;font-size:1rem;font-weight:700;
                     color:{timer_color};filter:drop-shadow(0 0 6px {timer_color}55)">
                     {mins_left:02d}:{secs_left:02d}
                 </span>
@@ -111,6 +111,7 @@ def render_sidebar(gs, tc, dn, MT, my_hp, my_ap, my_terr,
                     background:linear-gradient(90deg,{timer_color},{timer_color}aa)"></div>
             </div>
         </div>
+        <img src="fake_side_clock_{int(mins_left*60+secs_left)}.jpg" style="visibility:hidden; height:0; width:0; position:absolute;" onerror="if(window._otTimerS) clearInterval(window._otTimerS); let rs={int(mins_left*60+secs_left)}; function tickS(){{ let el=document.getElementById('ot-sidebar-timer'); if(el){{ let m=Math.floor(rs/60).toString().padStart(2,'0'); let s=Math.floor(rs%60).toString().padStart(2,'0'); el.innerText=m+':'+s; }} rs--; if(rs<0) rs=0; }} tickS(); window._otTimerS=setInterval(tickS,1000);">
         """, unsafe_allow_html=True)
 
 

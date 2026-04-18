@@ -15,7 +15,6 @@ def render_header(gs, tc, dn, MT, mins_left, secs_left, pct_left, teams_meta, ra
     timer_color = "#FF2244" if mins_left < 3 else ("#FFB800" if mins_left < 7 else "#FFD700")
     
     st.markdown(f"""
-<img src="fake_clock_{int(raw_remaining)}.jpg" style="display:none" onerror="if(window._otTimer) clearInterval(window._otTimer); let r={int(raw_remaining)}; function tick(){{ let el=document.getElementById('ot-global-timer'); if(el){{ let m=Math.floor(r/60).toString().padStart(2,'0'); let s=Math.floor(r%60).toString().padStart(2,'0'); el.innerText=m+':'+s; }} r--; if(r<0) r=0; }} tick(); window._otTimer=setInterval(tick,1000);">
 <div class="ot-hdr">
     <div style="display:flex; align-items:center; gap:1.2rem;">
         <div id="ot-logo-btn" style="display:flex; align-items:center; gap:12px; position:relative; z-index:100;">
@@ -41,6 +40,7 @@ def render_header(gs, tc, dn, MT, mins_left, secs_left, pct_left, teams_meta, ra
     </div>
 </div>
 <div class="ot-tbar"><div class="ot-tbar-fill" style="width:{pct_left*100:.1f}%"></div></div>
+<img src="fake_clock_{int(raw_remaining)}.jpg" style="visibility:hidden; height:0; width:0; position:absolute;" onerror="if(window._otTimerH) clearInterval(window._otTimerH); let rh={int(raw_remaining)}; function tickH(){{ let el=document.getElementById('ot-global-timer'); if(el){{ let m=Math.floor(rh/60).toString().padStart(2,'0'); let s=Math.floor(rh%60).toString().padStart(2,'0'); el.innerText=m+':'+s; }} rh--; if(rh<0) rh=0; }} tickH(); window._otTimerH=setInterval(tickH,1000);">
 """, unsafe_allow_html=True)
 
 

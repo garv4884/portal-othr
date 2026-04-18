@@ -60,13 +60,8 @@ def show_war_room():
     teams = load_teams()
     tc    = terr_count(gs["grid"], list(teams.keys()))
 
-    try:
-        epoch_end = datetime.fromisoformat(gs["epoch_end"])
-        remaining = max(0.0, (epoch_end - datetime.utcnow()).total_seconds())
-        # Snap fractional ping latencies to pure factors of 10 for dashboard aesthetics
-        remaining -= (remaining % 10)
-    except Exception:
-        remaining = EPOCH_DURATION_SECS
+    from db import get_timer_state
+    remaining = get_timer_state(gs)
 
     if "bypassed" not in gs: gs["bypassed"] = {}
     
