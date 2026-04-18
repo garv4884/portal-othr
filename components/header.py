@@ -11,43 +11,53 @@ def render_header(gs, tc, dn, MT, mins_left, secs_left, pct_left):
     MY_COLOR    = TEAM_COLORS[MT]["color"]
     timer_color = "#FF2244" if mins_left < 3 else ("#FFB800" if mins_left < 7 else "#FFD700")
 
-    st.markdown(f"""
-<div class="ot-hdr">
-    <div class="ot-hdr-left">
-        <div class="ot-logo" id="ot-logo-btn" style="cursor:pointer;" title="Click to Toggle Sidebar">OVERTHRONE</div>
-        <div class="ot-subtitle">HELIX × ISTE · THE ULTIMATE KINGDOM SIMULATION</div>
-    </div>
-""", unsafe_allow_html=True)
-    
+    # ── Sidebar Toggle Logic ──────────────────────────────
     import streamlit.components.v1 as _comp
     _comp.html("""
     <script>
     (function() {
         var d = window.parent.document;
+        if (window.parent.__OT_SIDEBAR_HOOKED__) return;
+        window.parent.__OT_SIDEBAR_HOOKED__ = true;
+
         function toggleSidebar() {
             var sb = d.querySelector('[data-testid="stSidebar"]');
-            var open = sb && parseInt(window.parent.getComputedStyle(sb).width) > 50;
-            if (open) {
-                var b = d.querySelector('[data-testid="stSidebarCollapseButton"] button') || d.querySelector('[data-testid="stSidebarCollapseButton"]');
-                if (b) b.click();
+            var isClosed = !sb || sb.getBoundingClientRect().width < 50;
+            var btn;
+            if (isClosed) {
+                btn = d.querySelector('[data-testid="collapsedControl"] button') || d.querySelector('[data-testid="collapsedControl"]');
             } else {
-                var b = d.querySelector('[data-testid="collapsedControl"] button') || d.querySelector('[data-testid="collapsedControl"]');
-                if (b) b.click();
+                btn = d.querySelector('[data-testid="stSidebarCollapseButton"] button') || d.querySelector('[data-testid="stSidebarCollapseButton"]');
             }
+            if (btn) btn.click();
         }
-        function hook() {
-            var logo = d.getElementById("ot-logo-btn");
-            if (logo && !logo.hasAttribute('data-bound')) {
-                logo.addEventListener('click', toggleSidebar);
-                logo.setAttribute('data-bound', 'true');
+
+        d.addEventListener('click', function(e) {
+            var curr = e.target;
+            while (curr && curr !== d.body) {
+                if (curr.id === 'ot-logo-btn') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    toggleSidebar();
+                    return;
+                }
+                curr = curr.parentElement;
             }
-        }
-        setInterval(hook, 500); 
+        }, true);
     })();
     </script>
     """, height=0)
 
     st.markdown(f"""
+<div class="ot-hdr">
+    <div style="display:flex; align-items:center; gap:1.2rem;">
+        <div id="ot-logo-btn" style="cursor:pointer; display:flex; align-items:center; gap:12px;" title="Toggle Sidebar">
+            <div style="font-size:1.5rem; color:var(--gold); filter:drop-shadow(0 0 5px var(--gold));">☰</div>
+            <div class="ot-logo" style="transition: filter 0.3s;" onmouseover="this.style.filter='drop-shadow(0 0 10px rgba(212,175,55,0.8))'" onmouseout="this.style.filter='none'">OVERTHRONE</div>
+        </div>
+        <div style="height:25px; width:1px; background:rgba(212,175,55,0.25); margin:0 5px"></div>
+        <div class="ot-subtitle">HELIX × ISTE · THE ULTIMATE KINGDOM SIMULATION</div>
+    </div>
     <div class="ot-center">
         <span class="ot-live-badge">● LIVE</span>
         <div class="ot-team-badge" style="color:{MY_COLOR};border-color:{MY_COLOR}44;background:{MY_COLOR}08">

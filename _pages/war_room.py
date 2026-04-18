@@ -21,6 +21,8 @@ from config import (
     TERRAIN_SPECIAL, get_amoeba_adjacency
 )
 from styles.theme import get_full_css
+from components.header import render_header
+from components.sidebar import render_sidebar
 
 
 def execute_bot(code_str, MT, target_gs, teams_dict):
@@ -193,166 +195,14 @@ def show_war_room():
     MY_COLOR  = teams.get(MT, {}).get("color", "#0099FF")
     MY_ICON   = teams.get(MT, {}).get("icon", "🔵")
 
-    # ── STYLES ───────────────────────────────────────────────
-    st.markdown(get_full_css(), unsafe_allow_html=True)
+    # ── METRICS ───────────────────────────────────────────────
+    my_hp   = int(gs["hp"].get(MT, 10000))
+    my_ap   = int(gs["ap"].get(MT, 0))
+    my_terr = tc.get(MT, 0)
 
-    # ── SIDEBAR ───────────────────────────────────────────────
-    with st.sidebar:
-        st.markdown(f"""
-        <div class="sb-head">
-            <div class="ot-logo" style="font-size:1.1rem;letter-spacing:4px">OVERTHRONE</div>
-            <div class="ot-subtitle" style="margin-top:3px">HELIX x ISTE · WAR ROOM OS v5.0</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-        st.markdown(f"""
-        <div class="sb-section">
-            <div class="sb-title">SOVEREIGN IDENTITY</div>
-            <div class="sb-row"><span class="sb-lbl">USER</span><span class="sb-val" style="color:{MY_COLOR}">{dn}</span></div>
-            <div class="sb-row"><span class="sb-lbl">TEAM</span><span class="sb-val" style="color:{MY_COLOR}">{MY_ICON} {MT}</span></div>
-        </div>
-        """, unsafe_allow_html=True)
-
-        my_meta = teams.get(MT, {})
-        members = my_meta.get("members", [username])
-        all_users = load_users()
-        member_names = [all_users.get(m, {}).get("display_name", m) for m in members]
-        pills = "".join(f'<span class="member-pill">{n}</span>' for n in member_names)
-        st.markdown(f'<div class="sb-section"><div class="sb-title">TEAM ROSTER</div>{pills}</div>', unsafe_allow_html=True)
-
-        my_hp   = int(gs["hp"].get(MT, STARTING_HP))
-        my_ap   = int(gs["ap"].get(MT, 0))
-        my_terr = tc.get(MT, 0)
-        hp_p = max(0, my_hp / STARTING_HP)
-        ap_p = min(my_ap / float(STARTING_AP*2), 1.0)
-
-        st.markdown(f"""
-        <div class="sb-section">
-            <div class="sb-title">BIOMETRICS · LIVE</div>
-            <div class="sb-row"><span class="sb-lbl">HEALTH POINTS</span><span class="sb-val" style="color:{MY_COLOR}">{my_hp:,}</span></div>
-            <div class="mini-bar" style="margin-bottom:8px">
-                <div class="mini-bar-f" style="width:{hp_p*100:.0f}%;background:{MY_COLOR};box-shadow:0 0 5px {MY_COLOR}"></div>
-            </div>
-            <div class="sb-row"><span class="sb-lbl">ATTACK POINTS</span><span class="sb-val" style="color:#00E5FF">{my_ap:,}</span></div>
-            <div class="mini-bar" style="margin-bottom:8px">
-                <div class="mini-bar-f" style="width:{ap_p*100:.0f}%;background:#00E5FF;box-shadow:0 0 5px #00E5FF"></div>
-            </div>
-            <div class="sb-row"><span class="sb-lbl">TERRITORY</span><span class="sb-val" style="color:#D4AF37">{my_terr} / 30 cells</span></div>
-            <div class="mini-bar"><div class="mini-bar-f" style="width:{my_terr}%;background:#D4AF37"></div></div>
-        </div>
-        """, unsafe_allow_html=True)
-
-        timer_color = "#FF2244" if remaining <= 60 else "#FFD700"
-        st.markdown(f"""
-        <div class="sb-section">
-            <div class="sb-title">EPOCH STATUS</div>
-            <div class="sb-row"><span class="sb-lbl">EPOCH</span><span class="sb-val" style="color:#D4AF37">{gs['epoch']}</span></div>
-            <div class="sb-row"><span class="sb-lbl">REMAINING</span><span class="sb-val" style="color:{timer_color};font-weight:700">{mins_left:02d}:{secs_left:02d}</span></div>
-            <div class="mini-bar" style="margin-top:6px">
-                <div class="mini-bar-f" style="width:{pct_left*100:.0f}%;background:linear-gradient(90deg,#D4AF37,#FFD700)"></div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        st.markdown('<div class="sb-section"><div class="sb-title">NETWORK</div>', unsafe_allow_html=True)
-        if st.button("LOGOUT / RECONNECT", use_container_width=True):
-            for k in ["logged_in","username","user_data","active_tab","bot_code"]:
-                st.session_state.pop(k, None)
-            st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    # ── SIDEBAR TOGGLE SCRIPT (Robust Version) ───────────────
-    components.html("""
-    <script>
-    (function() {
-        var d = window.parent.document;
-        
-        // Prevent multiple hooks
-        if (window.parent.__OT_SIDEBAR_HOOKED__) return;
-        window.parent.__OT_SIDEBAR_HOOKED__ = true;
-
-        console.log("OVERTHRONE: Sidebar Controller Initialized");
-
-        function toggleSidebar() {
-            var sb = d.querySelector('[data-testid="stSidebar"]');
-            var isClosed = !sb || sb.getBoundingClientRect().width < 50;
-            
-            console.log("OVERTHRONE: Sidebar state isClosed =", isClosed);
-
-            var btn = null;
-            if (isClosed) {
-                // SEARCHING FOR EXPAND BUTTON
-                btn = d.querySelector('[data-testid="collapsedControl"] button') || 
-                      d.querySelector('[data-testid="collapsedControl"]') ||
-                      d.querySelector('button[kind="headerNoSpacing"]') ||
-                      d.querySelector('.st-emotion-cache-1576t89') || // Common dynamic class for collapse btn
-                      Array.from(d.querySelectorAll('button')).find(b => b.innerText.includes('Sidebar') || b.querySelector('svg'));
-            } else {
-                // SEARCHING FOR COLLAPSE BUTTON
-                btn = d.querySelector('[data-testid="stSidebarCollapseButton"] button') || 
-                      d.querySelector('[data-testid="stSidebarCollapseButton"]') ||
-                      sb.querySelector('button');
-            }
-
-            if (btn) {
-                console.log("OVERTHRONE: Triggering button click on", btn);
-                btn.click();
-            } else {
-                console.error("OVERTHRONE: Sidebar toggle button not found. Current DOM state: Sidebar exists =", !!sb);
-                // Last resort: find ANY button in the top left area
-                var buttons = d.querySelectorAll('button');
-                for (var i = 0; i < buttons.length; i++) {
-                    var rect = buttons[i].getBoundingClientRect();
-                    if (rect.top < 100 && rect.left < 100) {
-                        console.log("OVERTHRONE: Attempting fallback click on top-left button");
-                        buttons[i].click();
-                        break;
-                    }
-                }
-            }
-        }
-
-        // Global listener on parent document handles clicks even if logo is rerendered
-        d.addEventListener('click', function(e) {
-            var curr = e.target;
-            while (curr && curr !== d.body) {
-                if (curr.id === 'ot-logo-btn') {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    toggleSidebar();
-                    return;
-                }
-                curr = curr.parentElement;
-            }
-        }, true);
-    })();
-    </script>
-    """, height=0)
-
-    # ── HEADER ───────────────────────────────────────────────
-    st.markdown(f"""
-<div class="ot-hdr">
-    <div style="display:flex; align-items:center; gap:1.2rem;">
-        <div id="ot-logo-btn" style="cursor:pointer; display:flex; align-items:center; gap:12px;" title="Toggle Sidebar">
-            <div style="font-size:1.5rem; color:var(--gold); filter:drop-shadow(0 0 5px var(--gold));">☰</div>
-            <div class="ot-logo" style="transition: filter 0.3s;" onmouseover="this.style.filter='drop-shadow(0 0 10px rgba(212,175,55,0.8))'" onmouseout="this.style.filter='none'">OVERTHRONE</div>
-        </div>
-        <div style="height:25px; width:1px; background:rgba(212,175,55,0.25); margin:0 5px"></div>
-        <div class="ot-subtitle">HELIX x ISTE · THE ULTIMATE KINGDOM SIMULATION</div>
-    </div>
-    <div style="display:flex;align-items:center;gap:1.2rem">
-        <span class="ot-live-badge">LIVE</span>
-        <div style="font-family:'Share Tech Mono',monospace;font-size:0.58rem;color:{MY_COLOR}">
-            {MY_ICON} {dn.upper()} · {MT}
-        </div>
-    </div>
-    <div class="ot-epoch-box">
-        <div class="ot-epoch-num">EPOCH {gs['epoch']}</div>
-        <div class="ot-epoch-phase">{gs['phase']}</div>
-    </div>
-    <div class="ot-timer" style="color:{timer_color}">{mins_left:02d}:{secs_left:02d}</div>
-</div>
-<div class="ot-tbar"><div class="ot-tbar-fill" style="width:{pct_left*100:.1f}%"></div></div>
+    # ── SHARED COMPONENTS ────────────────────────────────────
+    render_sidebar(gs, tc, dn, MT, my_hp, my_ap, my_terr, mins_left, secs_left, pct_left, redis_live)
+    render_header(gs, tc, dn, MT, mins_left, secs_left, pct_left)
 """, unsafe_allow_html=True)
 
     # ── VICTORY CONDITION DISPLAY ────────────────────────────

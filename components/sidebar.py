@@ -16,16 +16,56 @@ def render_sidebar(gs, tc, dn, MT, my_hp, my_ap, my_terr,
     hp_col   = "#FF2244" if my_hp < 1500 else ("#FFB800" if my_hp < 3000 else MY_COLOR)
 
     with st.sidebar:
+        # ── Sidebar Toggle Logic ──────────────────────────────
+        import streamlit.components.v1 as _comp
+        _comp.html("""
+        <script>
+        (function() {
+            var d = window.parent.document;
+            if (window.parent.__OT_SIDEBAR_HOOKED__) return;
+            window.parent.__OT_SIDEBAR_HOOKED__ = true;
+
+            function toggleSidebar() {
+                var sb = d.querySelector('[data-testid="stSidebar"]');
+                var isClosed = !sb || sb.getBoundingClientRect().width < 50;
+                var btn;
+                if (isClosed) {
+                    btn = d.querySelector('[data-testid="collapsedControl"] button') || d.querySelector('[data-testid="collapsedControl"]');
+                } else {
+                    btn = d.querySelector('[data-testid="stSidebarCollapseButton"] button') || d.querySelector('[data-testid="stSidebarCollapseButton"]');
+                }
+                if (btn) btn.click();
+            }
+
+            d.addEventListener('click', function(e) {
+                var curr = e.target;
+                while (curr && curr !== d.body) {
+                    if (curr.id === 'ot-logo-btn') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        toggleSidebar();
+                        return;
+                    }
+                    curr = curr.parentElement;
+                }
+            }, true);
+        })();
+        </script>
+        """, height=0)
+
         # ── Brand ─────────────────────────────────────────────
         st.markdown("""
         <div class="sb-head">
-            <div style="font-family:'Orbitron',monospace;font-size:1.05rem;font-weight:900;
-                letter-spacing:5px;background:linear-gradient(135deg,#8a6010,#FFD700,#D4AF37);
-                -webkit-background-clip:text;-webkit-text-fill-color:transparent;">
-                OVERTHRONE
+            <div id="ot-logo-btn" style="cursor:pointer; display:flex; align-items:center; gap:12px;" title="Toggle Sidebar">
+                <div style="font-size:1.2rem; color:#D4AF37; filter:drop-shadow(0 0 5px #D4AF37);">☰</div>
+                <div style="font-family:'Orbitron',monospace;font-size:1.05rem;font-weight:900;
+                    letter-spacing:5px;background:linear-gradient(135deg,#8a6010,#FFD700,#D4AF37);
+                    -webkit-background-clip:text;-webkit-text-fill-color:transparent;">
+                    OVERTHRONE
+                </div>
             </div>
             <div style="font-family:'Share Tech Mono',monospace;font-size:0.5rem;
-                color:#2a2a45;letter-spacing:3px;margin-top:4px">
+                color:#444;letter-spacing:3px;margin-top:4px; padding-left: 28px;">
                 HELIX × ISTE · WAR ROOM OS v5
             </div>
         </div>
