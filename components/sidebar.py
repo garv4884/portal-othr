@@ -17,56 +17,10 @@ def render_sidebar(gs, tc, dn, MT, my_hp, my_ap, my_terr,
     hp_col     = "#FF2244" if my_hp < 1500 else ("#FFB800" if my_hp < 3000 else MY_COLOR)
 
     with st.sidebar:
-        # ── Sidebar Toggle Logic ──────────────────────────────
-        import streamlit.components.v1 as _comp
-        _comp.html("""
-        <script>
-        (function() {
-            var d = window.parent.document;
-            if (window.parent.__OT_SIDEBAR_HOOKED_V2__) return;
-            window.parent.__OT_SIDEBAR_HOOKED_V2__ = true;
-
-            function toggleSidebar() {
-                var openParams = d.querySelectorAll('[data-testid="collapsedControl"] svg, [data-testid="collapsedControl"] button, [data-testid="collapsedControl"]');
-                var closeParams = d.querySelectorAll('[data-testid="stSidebarCollapseButton"] svg, [data-testid="stSidebarCollapseButton"] button, [data-testid="stSidebarCollapseButton"]');
-                
-                var clicked = false;
-                closeParams.forEach(function(el) {
-                    if (!clicked && el.offsetParent !== null) {
-                        el.dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true}));
-                        clicked = true;
-                    }
-                });
-                if (clicked) return;
-                
-                openParams.forEach(function(el) {
-                    if (!clicked && el.offsetParent !== null) {
-                       el.dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true}));
-                       clicked = true;
-                    }
-                });
-            }
-
-            d.addEventListener('click', function(e) {
-                var curr = e.target;
-                while (curr && curr !== d.body) {
-                    if (curr.id === 'ot-logo-btn' || curr.id === 'sticky-sidebar-toggle') {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        toggleSidebar();
-                        return;
-                    }
-                    curr = curr.parentElement;
-                }
-            }, true);
-        })();
-        </script>
-        """, height=0)
-
         # ── Brand ─────────────────────────────────────────────
         st.markdown("""
         <div class="sb-head">
-            <div id="ot-logo-btn" style="cursor:pointer; display:flex; align-items:center; gap:12px;" title="Toggle Sidebar">
+            <div id="ot-logo-btn" style="display:flex; align-items:center; gap:12px;">
                 <div style="font-size:1.2rem; color:#D4AF37; filter:drop-shadow(0 0 5px #D4AF37);">☰</div>
                 <div style="font-family:'Orbitron',monospace;font-size:1.05rem;font-weight:900;
                     letter-spacing:5px;background:linear-gradient(135deg,#8a6010,#FFD700,#D4AF37);

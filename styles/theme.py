@@ -27,13 +27,40 @@ _CSS = """
 [data-testid="stHeader"] { background: transparent !important; height: 0 !important; min-height: 0 !important; overflow: visible !important; }
 [data-testid="stToolbar"] { display: none !important; }
 [data-testid="collapsedControl"] {
-    display: flex !important; z-index: 9999 !important;
-    background: rgba(212,175,55,0.15) !important;
-    border: 1px solid rgba(212,175,55,0.4) !important;
-    border-radius: 4px !important; color: #D4AF37 !important;
-    position: fixed !important; top: 12px !important; left: 8px !important;
+    position: fixed !important; 
+    top: 50% !important; 
+    left: 0 !important; 
+    transform: translateY(-50%) !important; 
+    z-index: 999999 !important; 
+    background: linear-gradient(90deg, rgba(8,8,19,0.95), rgba(212,175,55,0.1)) !important; 
+    border: 1px solid rgba(212,175,55,0.4) !important; 
+    border-left: none !important; 
+    padding: 25px 12px 25px 6px !important; 
+    cursor: pointer !important; 
+    box-shadow: 2px 0 15px rgba(212,175,55,0.25) !important; 
+    border-radius: 0 10px 10px 0 !important; 
+    transition: all 0.3s !important;
+    width: auto !important;
+    height: auto !important;
 }
-[data-testid="collapsedControl"]:hover { background: rgba(212,175,55,0.3) !important; }
+[data-testid="collapsedControl"]:hover {
+    background: rgba(212,175,55,0.25) !important;
+    box-shadow: 4px 0 25px rgba(212,175,55,0.5) !important;
+}
+[data-testid="collapsedControl"] svg {
+    display: none !important;
+}
+[data-testid="collapsedControl"]::after {
+    content: "〉 PULL" !important;
+    font-family: 'Orbitron', monospace !important;
+    font-weight: 900 !important;
+    font-size: 11px !important;
+    color: #D4AF37 !important;
+    writing-mode: vertical-rl !important;
+    text-orientation: mixed !important;
+    letter-spacing: 4px !important;
+    text-shadow: 0 0 5px rgba(212,175,55,0.8) !important;
+}
 
 .block-container { padding: 1rem 1rem 3rem !important; max-width:1700px !important; }
 ::-webkit-scrollbar { width:3px; height:3px; }

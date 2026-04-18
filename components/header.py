@@ -13,63 +13,12 @@ def render_header(gs, tc, dn, MT, mins_left, secs_left, pct_left, teams_meta):
     MY_COLOR    = my_meta.get("color", "#00E5FF")
     timer_color = "#FF2244" if mins_left < 3 else ("#FFB800" if mins_left < 7 else "#FFD700")
 
-    # ── Sidebar Toggle Logic ──────────────────────────────
-    import streamlit.components.v1 as _comp
-    _comp.html("""
-    <script>
-    (function() {
-        var d = window.parent.document;
-        if (window.parent.__OT_SIDEBAR_HOOKED_V2__) return;
-        window.parent.__OT_SIDEBAR_HOOKED_V2__ = true;
-
-        function toggleSidebar() {
-            var openParams = d.querySelectorAll('[data-testid="collapsedControl"] svg, [data-testid="collapsedControl"] button, [data-testid="collapsedControl"]');
-            var closeParams = d.querySelectorAll('[data-testid="stSidebarCollapseButton"] svg, [data-testid="stSidebarCollapseButton"] button, [data-testid="stSidebarCollapseButton"]');
-            
-            var clicked = false;
-            // Try close first
-            closeParams.forEach(function(el) {
-                if (!clicked && el.offsetParent !== null) {
-                    el.dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true}));
-                    clicked = true;
-                }
-            });
-            if (clicked) return;
-            
-            // Try open
-            openParams.forEach(function(el) {
-                if (!clicked && el.offsetParent !== null) {
-                   el.dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true}));
-                   clicked = true;
-                }
-            });
-        }
-
-        d.addEventListener('click', function(e) {
-            var curr = e.target;
-            while (curr && curr !== d.body) {
-                if (curr.id === 'ot-logo-btn' || curr.id === 'sticky-sidebar-toggle') {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    toggleSidebar();
-                    return;
-                }
-                curr = curr.parentElement;
-            }
-        }, true);
-    })();
-    </script>
-    """, height=1)
-
     st.markdown(f"""
-<div id="sticky-sidebar-toggle" style="position:fixed; top:50%; left:0; transform:translateY(-50%); z-index:999999; background:linear-gradient(90deg, rgba(8,8,19,0.95), rgba(212,175,55,0.1)); border:1px solid rgba(212,175,55,0.4); border-left:none; padding:25px 6px; cursor:pointer; color:#D4AF37; box-shadow: 2px 0 15px rgba(212,175,55,0.25); border-radius:0 10px 10px 0; transition:all 0.3s; display:flex; align-items:center; justify-content:center;" onmouseover="this.style.background='rgba(212,175,55,0.25)';this.style.boxShadow='4px 0 25px rgba(212,175,55,0.5)';" onmouseout="this.style.background='linear-gradient(90deg, rgba(8,8,19,0.95), rgba(212,175,55,0.1))';this.style.boxShadow='2px 0 15px rgba(212,175,55,0.25)';">
-    <div style="font-family:'Orbitron',monospace; font-weight:900; font-size:11px; writing-mode:vertical-rl; text-orientation:mixed; letter-spacing:4px; text-shadow:0 0 5px rgba(212,175,55,0.8);">〉 PANEL</div>
-</div>
 <div class="ot-hdr">
     <div style="display:flex; align-items:center; gap:1.2rem;">
-        <div id="ot-logo-btn" style="cursor:pointer; display:flex; align-items:center; gap:12px; position:relative; z-index:100;" title="Toggle Sidebar">
+        <div id="ot-logo-btn" style="display:flex; align-items:center; gap:12px; position:relative; z-index:100;">
             <div style="font-size:1.5rem; color:var(--gold); filter:drop-shadow(0 0 5px var(--gold));">☰</div>
-            <div class="ot-logo" style="transition: filter 0.3s;" onmouseover="this.style.filter='drop-shadow(0 0 10px rgba(212,175,55,0.8))'" onmouseout="this.style.filter='none'">OVERTHRONE</div>
+            <div class="ot-logo">OVERTHRONE</div>
         </div>
         <div style="height:25px; width:1px; background:rgba(212,175,55,0.25); margin:0 5px"></div>
         <div class="ot-subtitle">HELIX × ISTE · THE ULTIMATE KINGDOM SIMULATION</div>
