@@ -12,11 +12,8 @@ RANK_COLORS = ["#FFD700", "#C0C0C0", "#CD7F32", "#555577"]
 
 
 def render_leaderboard(gs, tc, MT):
-    teams_meta = load_teams_meta()
-    
-    # Use live teams_meta for ranking to include all custom kingdoms
     ranked = sorted(
-        teams_meta.items(),
+        TEAM_COLORS.items(),
         key=lambda x: (tc.get(x[0], 0), int(gs["hp"].get(x[0], 0))),
         reverse=True,
     )

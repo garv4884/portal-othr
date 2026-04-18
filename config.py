@@ -51,55 +51,6 @@ TASKS = {
     ],
 }
 
-# Team Configuration
-TEAM_COLORS = {
-    "ALPHA":   {"color": "#0099FF", "bg": "#001933", "icon": "🔵"},
-    "CRIMSON": {"color": "#FF2244", "bg": "#330011", "icon": "🔴"},
-    "VERDANT": {"color": "#00CC88", "bg": "#003322", "icon": "🟢"},
-    "AURUM":   {"color": "#FFB800", "bg": "#332500", "icon": "🟡"},
-    "MYSTIC":  {"color": "#CC44FF", "bg": "#220033", "icon": "🟣"},
-    "EMBER":   {"color": "#FF8800", "bg": "#331100", "icon": "🟠"},
-}
-
-# Alias for compatibility if needed
-TEAM_PALETTE = list(TEAM_COLORS.values())
-
-# Action Cards Configuration
-ACTION_CARDS = [
-    {
-        "id": "ATTACK",
-        "icon": "🗡️",
-        "label": "BLITZ ATTACK",
-        "desc": "Seize a random enemy cell. High risk, immediate reward.",
-        "cost": 500,
-        "color": "#FF2244"
-    },
-    {
-        "id": "ALLIANCE",
-        "icon": "🤝",
-        "label": "DIPLOMATIC PACT",
-        "desc": "Declare non-aggression. Publicly marks another team as an ally.",
-        "cost": 0,
-        "color": "#00CC88"
-    },
-    {
-        "id": "BACKSTAB",
-        "icon": "🗡️",
-        "label": "TREACHEROUS STRIKE",
-        "desc": "Massive damage to an ally's territory. High HP drain.",
-        "cost": 1500,
-        "color": "#9933FF"
-    },
-    {
-        "id": "SUSPICION",
-        "icon": "👁️",
-        "label": "ACCUSE TRAITOR",
-        "desc": "Expose a plotter. If correct, they suffer massive damage.",
-        "cost": 1000,
-        "color": "#FFB800"
-    }
-]
-
 DIFF_COLOR = {"EASY": "#00CC88", "MEDIUM": "#FFB800", "HARD": "#FF2244"}
 EVENT_COLORS = {
     "ATTACK":"#FF2244","BACKSTAB":"#9933FF","ALLIANCE":"#00CC88",

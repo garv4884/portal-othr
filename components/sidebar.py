@@ -10,11 +10,7 @@ from config import TEAM_COLORS, STARTING_HP
 
 def render_sidebar(gs, tc, dn, MT, my_hp, my_ap, my_terr,
                    mins_left, secs_left, pct_left, redis_live):
-    teams_meta = load_teams_meta()
-    my_meta    = teams_meta.get(MT, {})
-    MY_COLOR   = my_meta.get("color", "#0099FF")
-    MY_ICON    = my_meta.get("icon", "🔵")
-    
+    MY_COLOR = TEAM_COLORS[MT]["color"]
     hp_pct   = max(0.0, my_hp / STARTING_HP)
     ap_pct   = min(my_ap / 3000, 1.0)
     hp_col   = "#FF2244" if my_hp < 1500 else ("#FFB800" if my_hp < 3000 else MY_COLOR)
@@ -92,7 +88,7 @@ def render_sidebar(gs, tc, dn, MT, my_hp, my_ap, my_terr,
             </div>
             <div class="sb-row">
                 <span class="sb-lbl">KINGDOM</span>
-                <span class="sb-val" style="color:{MY_COLOR}">{MY_ICON} {MT}</span>
+                <span class="sb-val" style="color:{MY_COLOR}">{TEAM_COLORS[MT]['icon']} {MT}</span>
             </div>
         </div>
         <div class="sb-section">

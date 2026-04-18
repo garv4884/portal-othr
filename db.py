@@ -219,20 +219,3 @@ def run_code_safe(code: str, timeout: int = 5) -> tuple[str, str]:
         return "", "[TIMEOUT] "
     except Exception as e:
         return "", str(e)
-
-# ── LOGIC SHIMS ───────────────────────────────────────────────
-def load_teams_meta():
-    """Alias for load_teams to support legacy component imports."""
-    return load_teams()
-
-def simulate_epoch(gs):
-    """Encapsulates the transition to a new epoch."""
-    import datetime
-    from config import EPOCH_DURATION_SECS
-    
-    gs["epoch"] += 1
-    gs["epoch_end"] = (datetime.datetime.utcnow() + datetime.timedelta(seconds=EPOCH_DURATION_SECS)).isoformat()
-    gs["bypassed"] = {}
-    gs["phase"] = "MOBILIZATION" # Reset phase
-    
-    return gs

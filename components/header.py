@@ -5,15 +5,10 @@ Header bar + kingdom status cards.
 
 import streamlit as st
 from config import TEAM_COLORS, STARTING_HP
-from db import load_teams_meta
 
 
 def render_header(gs, tc, dn, MT, mins_left, secs_left, pct_left):
-    teams_meta = load_teams_meta()
-    my_meta    = teams_meta.get(MT, {})
-    MY_COLOR   = my_meta.get("color", "#0099FF")
-    MY_ICON    = my_meta.get("icon", "🔵")
-    
+    MY_COLOR    = TEAM_COLORS[MT]["color"]
     timer_color = "#FF2244" if mins_left < 3 else ("#FFB800" if mins_left < 7 else "#FFD700")
 
     # ── Sidebar Toggle Logic ──────────────────────────────
@@ -66,7 +61,7 @@ def render_header(gs, tc, dn, MT, mins_left, secs_left, pct_left):
     <div class="ot-center">
         <span class="ot-live-badge">● LIVE</span>
         <div class="ot-team-badge" style="color:{MY_COLOR};border-color:{MY_COLOR}44;background:{MY_COLOR}08">
-            {MY_ICON} {dn.upper()} · TEAM {MT}
+            {TEAM_COLORS[MT]['icon']} {dn.upper()} · TEAM {MT}
         </div>
     </div>
     <div class="ot-epoch-box">
@@ -80,20 +75,13 @@ def render_header(gs, tc, dn, MT, mins_left, secs_left, pct_left):
 
 
 def render_kingdom_cards(gs, tc, MT):
-    teams_meta = load_teams_meta()
-    
-    # Sort teams by territory (cells) descending
-    sorted_teams = sorted(teams_meta.items(), key=lambda x: tc.get(x[0], 0), reverse=True)
-    top_4_teams  = sorted_teams[:4]
-    
     cols = st.columns(4, gap="small")
-    for col, (tname, tinfo) in zip(cols, top_4_teams):
+    for col, (tname, tinfo) in zip(cols, TEAM_COLORS.items()):
         hp   = int(gs["hp"].get(tname, STARTING_HP))
         ap   = int(gs["ap"].get(tname, 0))
         terr = tc.get(tname, 0)
-        c    = tinfo.get("color", "#0099FF")
-        bg   = tinfo.get("bg", "#001933")
-        icon = tinfo.get("icon", "🔵")
+        c    = tinfo["color"]
+        bg   = tinfo["bg"]
         mine = tname == MT
         hp_p = max(0.0, hp / STARTING_HP)
         ap_p = min(ap / 3000, 1.0)
@@ -105,7 +93,7 @@ def render_kingdom_cards(gs, tc, MT):
             st.markdown(f"""
             <div class="kcard" style="{border}background:linear-gradient(140deg,{bg} 0%,var(--card) 100%)">
                 <div class="kcard-accent" style="background:linear-gradient(180deg,{c},{c}66);box-shadow:0 0 10px {c}88"></div>
-                <div class="kcard-name" style="color:{c}">{icon} TEAM {tname}{badge}</div>
+                <div class="kcard-name" style="color:{c}">{tinfo['icon']} TEAM {tname}{badge}</div>
                 <div class="kcard-stats">
                     <div>
                         <div class="kcard-sl">HEALTH</div>
