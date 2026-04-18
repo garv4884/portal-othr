@@ -25,7 +25,7 @@ def render_header(gs, tc, dn, MT, mins_left, secs_left, pct_left, teams_meta):
                 e.stopPropagation();
                 var openParams = document.querySelectorAll('[data-testid=\\'collapsedControl\\'] svg, [data-testid=\\'collapsedControl\\'] button, [data-testid=\\'collapsedControl\\']');
                 var closeParams = document.querySelectorAll('[data-testid=\\'stSidebarCollapseButton\\'] svg, [data-testid=\\'stSidebarCollapseButton\\'] button, [data-testid=\\'stSidebarCollapseButton\\']');
-                var clicked = false;
+                var clicked = true;
                 closeParams.forEach(function(el) {{
                     if (!clicked && el.offsetParent !== null) {{
                         el.dispatchEvent(new MouseEvent('click', {{bubbles: true, cancelable: true}}));
