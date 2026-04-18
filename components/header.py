@@ -40,7 +40,6 @@ def render_header(gs, tc, dn, MT, mins_left, secs_left, pct_left, teams_meta, ra
     </div>
 </div>
 <div class="ot-tbar"><div class="ot-tbar-fill" style="width:{pct_left*100:.1f}%"></div></div>
-<img src="fake_clock_{int(raw_remaining)}.jpg" style="visibility:hidden; height:0; width:0; position:absolute;" onerror="if(window._otTimerH) clearInterval(window._otTimerH); let rh={int(raw_remaining)}; function tickH(){{ let el=document.getElementById('ot-global-timer'); if(el){{ let m=Math.floor(rh/60).toString().padStart(2,'0'); let s=Math.floor(rh%60).toString().padStart(2,'0'); el.innerText=m+':'+s; }} rh--; if(rh<0) rh=0; }} tickH(); window._otTimerH=setInterval(tickH,1000);">
 """, unsafe_allow_html=True)
 
 

@@ -37,8 +37,8 @@ def show_war_room():
     # ── Inject Theme ─────────────────────────────────────────
     st.markdown(get_full_css(), unsafe_allow_html=True)
 
-    # ── Auto-Refresh Timer (Ticks every 30s) ─────────────────
-    st_autorefresh(interval=30000, limit=None, key="ot_refresh")
+    # ── Auto-Refresh Disabled (Transitioned to Event-Driven Smart Ticker) ──
+    # st_autorefresh is removed to allow manual and milestone-only syncing.
     
     username = st.session_state.username
     users    = load_users()
@@ -713,4 +713,50 @@ def show_war_room():
                         save_gs(fresh_gs)
                     st.rerun()
             st.markdown("</div>", unsafe_allow_html=True)
+
+    # ── GLOBAL CHRONOS SYNC ENGINE ───────────────────────────
+    # Hidden component that synchronizes all clocks across the portal
+    import streamlit.components.v1 as components
+    import random
+    sync_seed = random.random()
+    chronos_html = f"""
+    <script>
+        const raw_r = {remaining};
+        function syncClocks() {{
+            const win = window.parent;
+            if(!win) return;
+            
+            if(win._otChronos) clearInterval(win._otChronos);
+            let r = Math.floor(raw_r);
+            
+            function tick() {{
+                const timerIDs = ['ot-global-timer', 'ot-sidebar-timer'];
+                timerIDs.forEach(id => {{
+                    const el = win.document.getElementById(id);
+                    if(el) {{
+                        const m = Math.floor(r/60).toString().padStart(2,'0');
+                        const s = Math.floor(r%60).toString().padStart(2,'0');
+                        el.innerText = m + ':' + s;
+                    }}
+                }});
+                
+                // Milestone Triggers: Snap-to-Server at critical moments
+                if(r === 120 || r === 0 || r === -5) {{
+                    console.log("CHRONOS: Milestone Triggered @ " + r + "s. Reloading...");
+                    win.location.reload(); 
+                }}
+                
+                r--;
+                if(r < -20) r = -20; // Prevent runaway negative ticking
+            }}
+            
+            tick();
+            win._otChronos = setInterval(tick, 1000);
+            console.log("CHRONOS: System Synchronized @ " + raw_r + "s (seed={sync_seed:.4f})");
+        }}
+        // Slight delay to ensure DOM hydration
+        setTimeout(syncClocks, 250);
+    </script>
+    """
+    components.html(chronos_html, height=0)
 

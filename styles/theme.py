@@ -174,6 +174,8 @@ hr { border:none !important; border-top:1px solid rgba(212,175,55,0.15) !importa
     margin-bottom:1.5rem;
     animation:pulse 2s ease infinite;
 }
+@keyframes pulse-btn { 0%,100%{transform:scale(1);box-shadow:0 0 0 rgba(212,175,55,0)} 50%{transform:scale(1.02);box-shadow:0 0 20px rgba(212,175,55,0.2)} }
+.btn-pulse { animation: pulse-btn 2s infinite !important; border-color:var(--gold) !important; color:var(--goldb) !important; }
 """
 
 def get_full_css() -> str:
