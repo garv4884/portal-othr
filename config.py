@@ -7,7 +7,7 @@ STARTING_HP = 5000
 STARTING_AP = 1200
 EPOCH_DURATION_SECS = 300  # 5 minutes
 ATTACK_COST_AP = 500
-TASK_COOLDOWN_SECS = 900
+TASK_COOLDOWN_SECS = 100
 TASK_FAIL_CHANCE = 0.15
 
 # Color Palettes
@@ -49,6 +49,25 @@ TASKS = {
         {"id":"s4","title":"Sovereign Strategy Engine","diff":"HARD",   "pts":1000, "desc":"Code a greedy+lookahead function to maximize territory gain.",
          "starter": "def best_attack(my_cells, enemy_grid):\n    # Greedy strategy: find most isolated enemy cell\n    # Return index of best cell to capture\n    pass\n\nprint(best_attack([0,1,10], ['CRIMSON']*100))"},
     ],
+}
+
+MONARCH_TASK_PORTAL = {
+    "m1": {
+        "drive_url": "https://drive.google.com/file/d/REPLACE_M1/view",
+        "answer": "replace_m1_answer",
+    },
+    "m2": {
+        "drive_url": "https://drive.google.com/file/d/REPLACE_M2/view",
+        "answer": "replace_m2_answer",
+    },
+    "m3": {
+        "drive_url": "https://drive.google.com/file/d/REPLACE_M3/view",
+        "answer": "replace_m3_answer",
+    },
+    "m4": {
+        "drive_url": "https://drive.google.com/file/d/REPLACE_M4/view",
+        "answer": "replace_m4_answer",
+    },
 }
 
 DIFF_COLOR = {"EASY": "#00CC88", "MEDIUM": "#FFB800", "HARD": "#FF2244"}

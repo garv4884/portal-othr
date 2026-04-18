@@ -18,9 +18,146 @@ from db import (
 from config import (
     TASKS, DIFF_COLOR, EVENT_COLORS, STARTING_HP, STARTING_AP,
     EPOCH_DURATION_SECS, ATTACK_COST_AP, CELL_COLORS, CELL_GLOW,
-    TERRAIN_SPECIAL, get_amoeba_adjacency
+    TERRAIN_SPECIAL, get_amoeba_adjacency, TASK_COOLDOWN_SECS,
+    MONARCH_TASK_PORTAL
 )
 from styles.theme import get_full_css
+
+
+def _normalize_answer(value: str) -> str:
+    return " ".join((value or "").strip().lower().split())
+
+
+def _team_task_cd_remaining(gs: dict, team: str) -> float:
+    cooldown_map = gs.get("team_task_cooldown", {})
+    end_ts = float(cooldown_map.get(team, 0) or 0)
+    return max(0.0, end_ts - time.time())
+
+
+def _user_task_done(gs: dict, username: str, task_id: str) -> bool:
+    return task_id in gs.get("task_done_by_user", {}).get(username, {})
+
+
+def _mark_user_task_done(gs: dict, username: str, task_id: str):
+    gs.setdefault("task_done_by_user", {}).setdefault(username, {})[task_id] = datetime.utcnow().isoformat()
+
+
+def _visible_ap(gs: dict, team: str) -> int:
+    """UI-only AP that can include hidden shadow points until epoch rollover."""
+    real_ap = int(gs["ap"].get(team, 0))
+    shadow_ap = int(gs.get("shadow_task_ap", {}).get(team, 0))
+    return real_ap + shadow_ap
+
+
+def _active_backstabber_for_team(gs: dict, target_team: str) -> str | None:
+    """Return the queued backstabber for target_team in the current epoch, if any."""
+    queued = gs.get("queued_actions", {})
+    for actor, action in queued.items():
+        if action.get("action") != "BACKSTAB":
+            continue
+        if action.get("target") != target_team:
+            continue
+        if int(gs["hp"].get(actor, 0)) <= 0:
+            continue
+        return actor
+    return None
+
+
+def _apply_task_rewards(gs: dict, solver_team: str, pts: int, task_title: str, solver_label: str):
+    """
+    Apply task rewards with alliance and betrayal rules:
+    - Normal: solver team gets +pts; all active allies get +pts.
+    - If solver team is actively targeted by a queued backstab this epoch:
+      solver team gets 0 real AP, backstabber gets +2*pts, solver team gets
+      shadow AP for UI until epoch rollover.
+    """
+    betrayer = _active_backstabber_for_team(gs, solver_team)
+    if betrayer:
+        gs["ap"][betrayer] = int(gs["ap"].get(betrayer, 0)) + (pts * 2)
+        gs.setdefault("shadow_task_ap", {})[solver_team] = int(gs.get("shadow_task_ap", {}).get(solver_team, 0)) + pts
+        push_ev("TASK", f"{solver_label} completed '{task_title}' +{pts} AP", solver_team)
+        return
+
+    gs["ap"][solver_team] = int(gs["ap"].get(solver_team, 0)) + pts
+
+    # Alliance sharing: allies receive full, non-halved points.
+    for ally in gs.get("alliances", {}).get(solver_team, []):
+        if int(gs["hp"].get(ally, 0)) <= 0:
+            continue
+        gs["ap"][ally] = int(gs["ap"].get(ally, 0)) + pts
+
+    push_ev("TASK", f"{solver_label} completed '{task_title}' +{pts} AP", solver_team)
+
+
+def _task_attempt_panel(task: dict, team: str, username: str):
+    task_id = task["id"]
+    portal = MONARCH_TASK_PORTAL.get(task_id, {})
+    drive_url = portal.get("drive_url", "")
+    expected_answer = portal.get("answer", "")
+
+    st.markdown(f"### {task['title']}")
+    st.markdown(task["desc"])
+
+    if drive_url:
+        st.markdown(f"[Open Problem Statement]({drive_url})")
+    else:
+        st.warning("Drive link is not configured for this task yet.")
+
+    live_gs = load_gs()
+
+    if _user_task_done(live_gs, username, task_id):
+        st.success("You already solved this task.")
+        return
+
+    team_cd = _team_task_cd_remaining(live_gs, team)
+    if team_cd > 0:
+        st.error(f"Team cooldown active: {int(team_cd//60):02d}:{int(team_cd%60):02d}")
+        return
+
+    answer = st.text_input("Your Answer", key=f"ans_{task_id}", placeholder="Type your answer")
+    c1, c2 = st.columns(2)
+    with c1:
+        submit_clicked = st.button("Submit", use_container_width=True, key=f"submit_{task_id}")
+    with c2:
+        cancel_clicked = st.button("Cancel", use_container_width=True, key=f"cancel_{task_id}")
+
+    if cancel_clicked:
+        st.rerun()
+
+    if submit_clicked:
+        current_gs = load_gs()
+
+        if _user_task_done(current_gs, username, task_id):
+            st.info("Already solved earlier.")
+            st.rerun()
+
+        current_cd = _team_task_cd_remaining(current_gs, team)
+        if current_cd > 0:
+            st.error(f"Team cooldown active: {int(current_cd//60):02d}:{int(current_cd%60):02d}")
+            return
+
+        if not expected_answer:
+            st.error("Answer key is not configured for this task.")
+            return
+
+        if _normalize_answer(answer) == _normalize_answer(expected_answer):
+            _apply_task_rewards(
+                current_gs,
+                solver_team=team,
+                pts=int(task["pts"]),
+                task_title=task["title"],
+                solver_label=username,
+            )
+            _mark_user_task_done(current_gs, username, task_id)
+            save_gs(current_gs)
+            st.success("Correct answer. AP awarded.")
+            st.rerun()
+        else:
+            current_gs.setdefault("team_task_cooldown", {})[team] = time.time() + TASK_COOLDOWN_SECS
+            save_gs(current_gs)
+            push_ev("TASK", f"Wrong answer on {task_id} by {username}. Team cooldown triggered.", team)
+            st.error(f"Wrong answer. Team cooldown applied for {TASK_COOLDOWN_SECS // 60} minutes.")
+            st.rerun()
 
 
 def execute_bot(code_str, MT, target_gs, teams_dict):
@@ -104,6 +241,7 @@ def show_war_room():
         remaining = EPOCH_DURATION_SECS
 
     if "bypassed" not in gs: gs["bypassed"] = {}
+    if "shadow_task_ap" not in gs: gs["shadow_task_ap"] = {}
     
     # Check if epoch rolled over
     if remaining <= 0 and not gs.get("game_over"):
@@ -184,6 +322,9 @@ def show_war_room():
             elif len(living) == 0:
                 gs["game_over"] = "DRAW"
 
+        # Shadow AP masking only applies within an epoch.
+        gs["shadow_task_ap"] = {}
+
         save_gs(gs)
         st.rerun()
 
@@ -195,6 +336,7 @@ def show_war_room():
 
     # ── STYLES ───────────────────────────────────────────────
     st.markdown(get_full_css(), unsafe_allow_html=True)
+
 
     # ── SIDEBAR ───────────────────────────────────────────────
     with st.sidebar:
@@ -221,7 +363,7 @@ def show_war_room():
         st.markdown(f'<div class="sb-section"><div class="sb-title">TEAM ROSTER</div>{pills}</div>', unsafe_allow_html=True)
 
         my_hp   = int(gs["hp"].get(MT, STARTING_HP))
-        my_ap   = int(gs["ap"].get(MT, 0))
+        my_ap   = _visible_ap(gs, MT)
         my_terr = tc.get(MT, 0)
         hp_p = max(0, my_hp / STARTING_HP)
         ap_p = min(my_ap / float(STARTING_AP*2), 1.0)
@@ -319,14 +461,108 @@ def show_war_room():
         with col2:
             if st.button("🃏 PLAY ATTACK CARD (Bypass Bot) -150 AP", use_container_width=True):
                 # Apply penalty
+                if "bypassed" not in gs:
+                    gs["bypassed"] = {}
                 gs["ap"][MT] = max(0, int(gs["ap"].get(MT, 0)) - 150)
                 gs["bypassed"][MT] = True
                 save_gs(gs)
                 push_ev("SYS", f"Team {MT} utilized manual override override (-150 AP)", MT)
                 st.rerun()
 
+    if "bypassed" not in gs:
+        gs["bypassed"] = {}
+        
     if gs.get("bypassed", {}).get(MT) and gs["hp"].get(MT, 0) > 0:
         st.info("You have bypassed the automated bot phase. Your bot is frozen for this epoch. You may attack manually.")
+        
+        # Get valid adjacent cells to attack
+        adj = get_amoeba_adjacency(len(gs["grid"]))
+        my_cells = [i for i, owner in enumerate(gs["grid"]) if owner == MT]
+        
+        # If team has no cells, offer to claim a starter cell first
+        if not my_cells:
+            st.warning("⚠️ Your team has no territory yet!")
+            empty_cells = [i for i, owner in enumerate(gs["grid"]) if not owner]
+            if empty_cells:
+                st.markdown("### Claim Your First Cell")
+                cell_choice = st.select_slider("Pick a free cell:", options=empty_cells, value=empty_cells[0])
+                if st.button("📍 CLAIM THIS CELL", use_container_width=True):
+                    gs["grid"][cell_choice] = MT
+                    push_ev("SYS", f"Team {MT} claimed starter cell {cell_choice}", MT)
+                    save_gs(gs)
+                    st.success(f"✓ Claimed cell {cell_choice}!")
+                    st.rerun()
+            else:
+                st.error("❌ No free cells available on the map!")
+            st.stop()
+        
+        # Quick attack UI
+        st.markdown('<div style="margin:12px 0; padding:12px; border-left:3px solid #FF2244; background:rgba(255,34,68,0.08)"><b>⚡ MANUAL ATTACK</b></div>', unsafe_allow_html=True)
+        
+        valid_targets_set = set()
+        for c in my_cells:
+            valid_targets_set.update(adj.get(c, []))
+        valid_targets_set = {t for t in valid_targets_set if gs["grid"][t] != MT}
+        
+        # Build a map of target_cell -> team_id
+        cell_to_team = {}
+        for cell_idx in valid_targets_set:
+            owner = gs["grid"][cell_idx]
+            if owner:
+                if owner not in cell_to_team:
+                    cell_to_team[owner] = []
+                cell_to_team[owner].append(cell_idx)
+        
+        if not cell_to_team:
+            st.warning("No valid targets. Expand your territory first.")
+        else:
+            # Show team options
+            team_options = []
+            for team_id in sorted(cell_to_team.keys()):
+                team_info = teams.get(team_id, {})
+                hp_val = gs["hp"].get(team_id, 0)
+                cells_count = len(cell_to_team[team_id])
+                label = f"{team_info.get('name', team_id)} (HP: {hp_val} | {cells_count} adjacent cells)"
+                team_options.append((team_id, label))
+            
+            selected_team_label = st.selectbox(
+                "Select team to attack:",
+                [opt[1] for opt in team_options],
+                key="manual_attack_team_select",
+                label_visibility="collapsed"
+            )
+            selected_team_id = team_options[[opt[1] for opt in team_options].index(selected_team_label)][0]
+            
+            # Show cells of that team
+            target_cells = cell_to_team[selected_team_id]
+            cell_labels = [f"Cell {c}" for c in target_cells]
+            selected_cell_label = st.selectbox(
+                "Select cell to attack:",
+                cell_labels,
+                key="manual_attack_cell_select",
+                label_visibility="collapsed"
+            )
+            selected_cell_idx = target_cells[cell_labels.index(selected_cell_label)]
+            
+            col_atk, col_cancel = st.columns(2)
+            with col_atk:
+                if st.button("🗡️ EXECUTE ATTACK", use_container_width=True):
+                    ap = int(gs["ap"].get(MT, 0))
+                    if ap >= ATTACK_COST_AP:
+                        gs["grid"][selected_cell_idx] = MT
+                        gs["ap"][MT] -= ATTACK_COST_AP
+                        push_ev("ATTACK", f"Team {MT} manually attacked cell {selected_cell_idx} from {selected_team_id} (-{ATTACK_COST_AP} AP)", MT)
+                        save_gs(gs)
+                        st.success(f"✓ Captured cell {selected_cell_idx}!")
+                        st.rerun()
+                    else:
+                        st.error(f"Not enough AP! Need {ATTACK_COST_AP}, have {ap}")
+            with col_cancel:
+                if st.button("✕ Cancel", use_container_width=True):
+                    gs["bypassed"][MT] = False
+                    save_gs(gs)
+                    st.info("Attack bypassed mode deactivated.")
+                    st.rerun()
 
     # ── MAIN TABS ────────────────────────────────────────────
     tab_names = ["Home", "Tasks Human", "Tasks (Bot)", "Attack Decision Bot", "Strategy Deck"]
@@ -382,7 +618,7 @@ def show_war_room():
                 mems = len(t_dict.get("members", []))
                 team_meta_dict[t_id] = {
                     "hp": gs["hp"].get(t_id, 0),
-                    "ap": gs["ap"].get(t_id, 0),
+                    "ap": _visible_ap(gs, t_id),
                     "terr": sum(1 for x in gs["grid"] if x == t_id),
                     "members": mems
                 }
@@ -571,35 +807,36 @@ def show_war_room():
     # TASKS HUMAN
     # ─────────────────────────────────────────────────────────────
     elif active == "Tasks Human":
-        cd_end = st.session_state.cooldown.get(MT, 0)
-        cd_rem = max(0.0, cd_end - time.time())
-        if cd_rem > 0:
-            st.markdown(f'<div class="cd-bar">⏳ TASK COOLDOWN — {int(cd_rem//60):02d}:{int(cd_rem%60):02d} remaining</div>', unsafe_allow_html=True)
+        team_cd_rem = _team_task_cd_remaining(gs, MT)
+        if team_cd_rem > 0:
+            st.markdown(
+                f'<div class="cd-bar">⏳ TEAM TASK COOLDOWN — {int(team_cd_rem//60):02d}:{int(team_cd_rem%60):02d} remaining</div>',
+                unsafe_allow_html=True,
+            )
 
-        st.markdown('<div class="sec-lbl">🧠 HUMAN TASKS · MANUAL CLAIM</div>', unsafe_allow_html=True)
+        st.markdown('<div class="sec-lbl">🧠 HUMAN TASKS · ATTEMPT & SUBMIT</div>', unsafe_allow_html=True)
         tc_cols = st.columns(2, gap="small")
         for i, task in enumerate(TASKS["monarch"]):
             dc = DIFF_COLOR[task["diff"]]
+            solved = _user_task_done(gs, username, task["id"])
             with tc_cols[i % 2]:
+                solved_badge = '<div style="color:#00CC88;font-size:0.72rem;margin-top:6px">✅ Solved</div>' if solved else ""
                 st.markdown(f"""
                 <div class="tc" style="border-top:2px solid {dc}44">
                     <div class="tc-diff" style="background:{dc}18;color:{dc};border:1px solid {dc}44">{task['diff']}</div>
                     <div class="tc-title">{task['title']}</div>
                     <div class="tc-desc">{task['desc']}</div>
                     <div class="tc-pts">+{task['pts']} AP</div>
+                    {solved_badge}
                 </div>
                 """, unsafe_allow_html=True)
-                if st.button(f"CLAIM +{task['pts']}AP", key=f"task_{task['id']}", use_container_width=True, disabled=(cd_rem > 0)):
-                    if random.random() < 0.15:
-                        st.session_state.cooldown[MT] = time.time() + 900
-                        push_ev("TASK", f"Task FAILED — Team {MT} entering cooldown", MT)
-                        st.error("Failed! 15-min cooldown.")
-                    else:
-                        gs["ap"][MT] = int(gs["ap"].get(MT, 0)) + task["pts"]
-                        save_gs(gs)
-                        push_ev("TASK", f"Team {MT} completed '{task['title']}' +{task['pts']} AP", MT)
-                        st.success(f"+{task['pts']} AP earned!")
-                    st.rerun()
+                attempt_disabled = solved or (team_cd_rem > 0)
+                btn_label = "DONE" if solved else f"ATTEMPT +{task['pts']} AP"
+                if attempt_disabled:
+                    st.button(btn_label, key=f"attempt_{task['id']}", use_container_width=True, disabled=True)
+                else:
+                    with st.popover(btn_label, key=f"attempt_popover_{task['id']}", use_container_width=True):
+                        _task_attempt_panel(task, MT, username)
 
     # ─────────────────────────────────────────────────────────────
     # TASKS BOT (Code editor)
@@ -638,9 +875,14 @@ def show_war_room():
             st.session_state.code_outputs[out_key] = {"stdout":so, "stderr":se, "ts": datetime.utcnow().strftime("%H:%M:%S")}
             if not se:
                 task_obj = next(t for t in TASKS["sovereign"] if t["id"] == sel_id)
-                gs["ap"][MT] = int(gs["ap"].get(MT, 0)) + task_obj["pts"]
+                _apply_task_rewards(
+                    gs,
+                    solver_team=MT,
+                    pts=int(task_obj["pts"]),
+                    task_title=task_obj["title"],
+                    solver_label=f"Team {MT}",
+                )
                 save_gs(gs)
-                push_ev("TASK", f"Team {MT} completed bot challenge '{task_obj['title']}'", MT)
                 st.success("Accepted! AP awarded.")
             else:
                 st.error("Errors detected.")
@@ -741,15 +983,15 @@ def show_war_room():
     # ─────────────────────────────────────────────────────────────
     elif active == "Strategy Deck":
         st.markdown('<div class="sec-lbl">🃏 ACTION CARDS · STRATEGY DECK</div>', unsafe_allow_html=True)
-        
+
         all_teams = [t for t in teams.keys() if t != MT]
         alliances = gs.get("alliances", {}).get(MT, [])
         ally_reqs = gs.get("alliance_reqs", {}).get(MT, [])
         queued_actions = gs.get("queued_actions", {})
         my_queued = queued_actions.get(MT, None)
-        
+
         c1, c2, c3 = st.columns(3)
-        
+
         # 1. Alliance Card
         with c1:
             st.markdown("""
@@ -761,26 +1003,31 @@ def show_war_room():
             non_allies = [t for t in all_teams if t not in alliances]
             t_ally = st.selectbox("Offer Alliance to:", ["--"] + non_allies, key="ally_sel", label_visibility="collapsed")
             if st.button("SEND ALLIANCE REQUEST", use_container_width=True) and t_ally != "--":
-                if "alliance_reqs" not in gs: gs["alliance_reqs"] = {}
-                if t_ally not in gs["alliance_reqs"]: gs["alliance_reqs"][t_ally] = []
+                if "alliance_reqs" not in gs:
+                    gs["alliance_reqs"] = {}
+                if t_ally not in gs["alliance_reqs"]:
+                    gs["alliance_reqs"][t_ally] = []
                 if MT not in gs["alliance_reqs"][t_ally]:
                     gs["alliance_reqs"][t_ally].append(MT)
                     save_gs(gs)
                     push_ev("SYS", f"Team {MT} offered an alliance to {t_ally}.", MT)
                     st.success("Request Sent!")
-            
+
             if ally_reqs:
                 st.markdown("<div style='margin-top:10px;font-size:0.8rem;color:#D4AF37'>PENDING REQUESTS</div>", unsafe_allow_html=True)
                 for req_team in ally_reqs:
                     if st.button(f"ACCEPT {req_team}", key=f"acc_{req_team}", use_container_width=True):
                         # Make mutual
-                        if "alliances" not in gs: gs["alliances"] = {}
-                        if MT not in gs["alliances"]: gs["alliances"][MT] = []
-                        if req_team not in gs["alliances"]: gs["alliances"][req_team] = []
-                        
+                        if "alliances" not in gs:
+                            gs["alliances"] = {}
+                        if MT not in gs["alliances"]:
+                            gs["alliances"][MT] = []
+                        if req_team not in gs["alliances"]:
+                            gs["alliances"][req_team] = []
+
                         gs["alliances"][MT].append(req_team)
                         gs["alliances"][req_team].append(MT)
-                        
+
                         gs["alliance_reqs"][MT].remove(req_team)
                         save_gs(gs)
                         push_ev("SYS", f"Team {MT} and {req_team} forged an Alliance!", MT)
@@ -800,7 +1047,8 @@ def show_war_room():
             else:
                 t_bs = st.selectbox("Target Ally:", ["--"] + alliances, key="bs_sel", label_visibility="collapsed")
                 if st.button("QUEUE BACKSTAB", use_container_width=True) and t_bs != "--":
-                    if "queued_actions" not in gs: gs["queued_actions"] = {}
+                    if "queued_actions" not in gs:
+                        gs["queued_actions"] = {}
                     gs["queued_actions"][MT] = {"action": "BACKSTAB", "target": t_bs}
                     save_gs(gs)
                     st.success("Backstab Queued!")
@@ -826,7 +1074,8 @@ def show_war_room():
             else:
                 t_susp = st.selectbox("Suspect Ally:", ["--"] + alliances, key="susp_sel", label_visibility="collapsed")
                 if st.button("QUEUE SUSPICION", use_container_width=True) and t_susp != "--":
-                    if "queued_actions" not in gs: gs["queued_actions"] = {}
+                    if "queued_actions" not in gs:
+                        gs["queued_actions"] = {}
                     gs["queued_actions"][MT] = {"action": "SUSPICION", "target": t_susp}
                     save_gs(gs)
                     st.success("Suspicion Queued!")
