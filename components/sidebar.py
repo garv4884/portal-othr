@@ -5,15 +5,17 @@ Premium sidebar: identity, biometrics, epoch timer, quick actions.
 
 import streamlit as st
 from db import push_ev, reset_gs, save_gs, load_teams_meta, load_users, simulate_epoch
-from config import TEAM_COLORS, STARTING_HP
+from config import STARTING_HP
 
 
 def render_sidebar(gs, tc, dn, MT, my_hp, my_ap, my_terr,
                    mins_left, secs_left, pct_left, redis_live):
-    MY_COLOR = TEAM_COLORS[MT]["color"]
-    hp_pct   = max(0.0, my_hp / STARTING_HP)
-    ap_pct   = min(my_ap / 3000, 1.0)
-    hp_col   = "#FF2244" if my_hp < 1500 else ("#FFB800" if my_hp < 3000 else MY_COLOR)
+    teams_meta = load_teams_meta()
+    my_meta    = teams_meta.get(MT, {})
+    MY_COLOR   = my_meta.get("color", "#00E5FF")
+    hp_pct     = max(0.0, my_hp / STARTING_HP)
+    ap_pct     = min(my_ap / 3000, 1.0)
+    hp_col     = "#FF2244" if my_hp < 1500 else ("#FFB800" if my_hp < 3000 else MY_COLOR)
 
     with st.sidebar:
         # ── Sidebar Toggle Logic ──────────────────────────────
