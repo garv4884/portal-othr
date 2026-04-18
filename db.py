@@ -83,13 +83,13 @@ def login_user(username, password):
 
 # ── DYNAMIC TEAMS ─────────────────────────────────────────────
 def load_teams():
-    raw = R.get("ot:teams_meta")
+    raw = R.get("ot:teams")
     if raw:
         try: return json.loads(raw)
         except: pass
     return {}
 
-def save_teams(t): R.set("ot:teams_meta", json.dumps(t))
+def save_teams(t): R.set("ot:teams", json.dumps(t))
 
 def create_team(tname, username, join_code=""):
     tname = tname.strip()
