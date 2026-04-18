@@ -14,31 +14,7 @@ def render_header(gs, tc, dn, MT, mins_left, secs_left, pct_left, teams_meta):
     timer_color = "#FF2244" if mins_left < 3 else ("#FFB800" if mins_left < 7 else "#FFD700")
 
     st.markdown(f"""
-<img src="dummy" style="display:none;" onerror="
-    if (window._sidebarToggleBound) return;
-    window._sidebarToggleBound = true;
-    document.addEventListener('click', function(e) {{
-        var curr = e.target;
-        while (curr && curr !== document.body) {{
-            if (curr.id === 'ot-logo-btn' || curr.id === 'sticky-sidebar-toggle') {{
-                e.preventDefault();
-                e.stopPropagation();
-                var openBtn = document.querySelector('[data-testid=\\'collapsedControl\\']');
-                var closeBtn = document.querySelector('[data-testid=\\'stSidebarCollapseButton\\']');
-                
-                if (closeBtn && window.getComputedStyle(closeBtn).display !== 'none') {{
-                    closeBtn.dispatchEvent(new MouseEvent('click', {{bubbles: true, cancelable: true}}));
-                }} else if (openBtn && window.getComputedStyle(openBtn).display !== 'none') {{
-                    openBtn.dispatchEvent(new MouseEvent('click', {{bubbles: true, cancelable: true}}));
-                }} else if (openBtn) {{
-                    openBtn.dispatchEvent(new MouseEvent('click', {{bubbles: true, cancelable: true}}));
-                }}
-                return;
-            }}
-            curr = curr.parentElement;
-        }}
-    }}, true);
-">
+<img src="dummy" style="display:none;" onerror="if(!window._otTgl){{window._otTgl=1;document.addEventListener('click',e=>{{let c=e.target;while(c&&c!==document.body){{if(c.id==='ot-logo-btn'||c.id==='sticky-sidebar-toggle'){{e.preventDefault();e.stopPropagation();let o=document.querySelector('[data-testid=\\'collapsedControl\\']');let x=document.querySelector('[data-testid=\\'stSidebarCollapseButton\\']');if(x&&window.getComputedStyle(x).display!=='none')x.dispatchEvent(new MouseEvent('click',{{bubbles:true,cancelable:true}}));else if(o)o.dispatchEvent(new MouseEvent('click',{{bubbles:true,cancelable:true}}));return;}}c=c.parentElement;}}}},true);}}">
 <div id="sticky-sidebar-toggle" style="position:fixed; top:15px; left:0; z-index:999999; background:linear-gradient(90deg, rgba(8,8,19,0.95), rgba(212,175,55,0.1)); border:1px solid rgba(212,175,55,0.4); border-left:none; padding:15px 6px; cursor:pointer; color:#D4AF37; box-shadow: 2px 0 15px rgba(212,175,55,0.25); border-radius:0 10px 10px 0; transition:all 0.3s; display:flex; align-items:center; justify-content:center;" onmouseover="this.style.background='rgba(212,175,55,0.25)';this.style.boxShadow='4px 0 25px rgba(212,175,55,0.5)';" onmouseout="this.style.background='linear-gradient(90deg, rgba(8,8,19,0.95), rgba(212,175,55,0.1))';this.style.boxShadow='2px 0 15px rgba(212,175,55,0.25)';">
     <div style="font-family:'Orbitron',monospace; font-weight:900; font-size:11px; writing-mode:vertical-rl; text-orientation:mixed; letter-spacing:4px; text-shadow:0 0 5px rgba(212,175,55,0.8);">〉 PANEL</div>
 </div>

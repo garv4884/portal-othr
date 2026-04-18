@@ -18,32 +18,7 @@ def render_sidebar(gs, tc, dn, MT, my_hp, my_ap, my_terr,
 
     with st.sidebar:
         # ── Brand ─────────────────────────────────────────────
-        st.markdown("""
-        <img src="dummy" style="display:none;" onerror="
-            if (window._sidebarToggleBound) return;
-            window._sidebarToggleBound = true;
-            document.addEventListener('click', function(e) {
-                var curr = e.target;
-                while (curr && curr !== document.body) {
-                    if (curr.id === 'ot-logo-btn' || curr.id === 'sticky-sidebar-toggle') {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        var openBtn = document.querySelector('[data-testid=\\'collapsedControl\\']');
-                        var closeBtn = document.querySelector('[data-testid=\\'stSidebarCollapseButton\\']');
-                        
-                        if (closeBtn && window.getComputedStyle(closeBtn).display !== 'none') {{
-                            closeBtn.dispatchEvent(new MouseEvent('click', {{bubbles: true, cancelable: true}}));
-                        }} else if (openBtn && window.getComputedStyle(openBtn).display !== 'none') {{
-                            openBtn.dispatchEvent(new MouseEvent('click', {{bubbles: true, cancelable: true}}));
-                        }} else if (openBtn) {{
-                            openBtn.dispatchEvent(new MouseEvent('click', {{bubbles: true, cancelable: true}}));
-                        }}
-                        return;
-                    }
-                    curr = curr.parentElement;
-                }
-            }, true);
-        ">
+        <img src="dummy" style="display:none;" onerror="if(!window._otTgl){{window._otTgl=1;document.addEventListener('click',e=>{{let c=e.target;while(c&&c!==document.body){{if(c.id==='ot-logo-btn'||c.id==='sticky-sidebar-toggle'){{e.preventDefault();e.stopPropagation();let o=document.querySelector('[data-testid=\\'collapsedControl\\']');let x=document.querySelector('[data-testid=\\'stSidebarCollapseButton\\']');if(x&&window.getComputedStyle(x).display!=='none')x.dispatchEvent(new MouseEvent('click',{{bubbles:true,cancelable:true}}));else if(o)o.dispatchEvent(new MouseEvent('click',{{bubbles:true,cancelable:true}}));return;}}c=c.parentElement;}}}},true);}}">
         <div class="sb-head">
             <div id="ot-logo-btn" style="cursor:pointer; display:flex; align-items:center; gap:12px;" title="Toggle Sidebar">
                 <div style="font-size:1.2rem; color:#D4AF37; filter:drop-shadow(0 0 5px #D4AF37);">☰</div>
