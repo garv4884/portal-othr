@@ -5,7 +5,7 @@ Premium sidebar: identity, biometrics, epoch timer, quick actions.
 
 import streamlit as st
 from db import push_ev, reset_gs, save_gs, load_teams, load_users, simulate_epoch
-from config import STARTING_HP
+from config import STARTING_HP, TEAM_COLORS
 
 
 def render_sidebar(gs, tc, dn, MT, my_hp, my_ap, my_terr,
@@ -74,7 +74,6 @@ def render_sidebar(gs, tc, dn, MT, my_hp, my_ap, my_terr,
         """, unsafe_allow_html=True)
 
         # ── Sovereign Identity ────────────────────────────────
-        teams_meta   = load_teams_meta()
         my_meta      = teams_meta.get(MT, {})
         members      = my_meta.get("members", [st.session_state.username])
         all_users    = load_users()
