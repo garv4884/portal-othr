@@ -127,6 +127,11 @@ def create_team(tname, username, join_code=""):
         gs["hp"][tname] = STARTING_HP
         gs["ap"][tname] = STARTING_AP
         
+        # Modular Map: scale grid size based on active kingdoms (10 per team, min 30)
+        target_cells = max(30, len(teams) * 10)
+        while len(gs["grid"]) < target_cells:
+            gs["grid"].append("")
+            
         # Assign random available cell
         empty_cells = [i for i, owner in enumerate(gs["grid"]) if not owner]
         if empty_cells:

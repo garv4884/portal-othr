@@ -165,7 +165,7 @@ def show_war_room():
 
         with left_col:
             total_claimed = sum(1 for c in gs["grid"] if c)
-            unclaimed = 30 - total_claimed
+            unclaimed = len(gs["grid"]) - total_claimed
             st.markdown(f"""
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
                 <div style="font-family:'Orbitron',monospace;font-size:0.5rem;letter-spacing:4px;color:#64ff96;text-shadow:0 0 8px #00ff5566">
@@ -235,7 +235,8 @@ def show_war_room():
                     .attr("viewBox", `0 0 ${{width}} ${{height}}`)
                     .attr("style", "width:100%; height:100%; display:block; padding: 10px;");
                 
-                const n = 30;
+                const data = {grid_json};
+                const n = data.length;
                 const points = [];
                 const phi = (1 + Math.sqrt(5)) / 2;
                 for(let i=0; i<n; i++) {{
@@ -249,8 +250,6 @@ def show_war_room():
                 const delaunay = d3.Delaunay.from(points);
                 const voronoi = delaunay.voronoi([0, 0, width, height]);
                 const pData = points.map((p, i) => ({{p: p, i: i}}));
-                
-                const data = {grid_json};
                 const backgrounds = {team_colors_json};
                 const strokes = {team_strokes_json};
                 const meta = {metadata_json};
