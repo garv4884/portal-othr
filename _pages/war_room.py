@@ -203,7 +203,6 @@ def show_war_room():
     # ── SHARED COMPONENTS ────────────────────────────────────
     render_sidebar(gs, tc, dn, MT, my_hp, my_ap, my_terr, mins_left, secs_left, pct_left, redis_live)
     render_header(gs, tc, dn, MT, mins_left, secs_left, pct_left)
-""", unsafe_allow_html=True)
 
     # ── VICTORY CONDITION DISPLAY ────────────────────────────
     if gs.get("game_over"):
