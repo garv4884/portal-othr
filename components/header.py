@@ -23,22 +23,16 @@ def render_header(gs, tc, dn, MT, mins_left, secs_left, pct_left, teams_meta):
             if (curr.id === 'ot-logo-btn' || curr.id === 'sticky-sidebar-toggle') {{
                 e.preventDefault();
                 e.stopPropagation();
-                var openParams = document.querySelectorAll('[data-testid=\\'collapsedControl\\'] svg, [data-testid=\\'collapsedControl\\'] button, [data-testid=\\'collapsedControl\\']');
-                var closeParams = document.querySelectorAll('[data-testid=\\'stSidebarCollapseButton\\'] svg, [data-testid=\\'stSidebarCollapseButton\\'] button, [data-testid=\\'stSidebarCollapseButton\\']');
-                var clicked = true;
-                closeParams.forEach(function(el) {{
-                    if (!clicked && el.offsetParent !== null) {{
-                        el.dispatchEvent(new MouseEvent('click', {{bubbles: true, cancelable: true}}));
-                        clicked = true;
-                    }}
-                }});
-                if (clicked) return;
-                openParams.forEach(function(el) {{
-                    if (!clicked && el.offsetParent !== null) {{
-                       el.dispatchEvent(new MouseEvent('click', {{bubbles: true, cancelable: true}}));
-                       clicked = true;
-                    }}
-                }});
+                var openBtn = document.querySelector('[data-testid=\\'collapsedControl\\']');
+                var closeBtn = document.querySelector('[data-testid=\\'stSidebarCollapseButton\\']');
+                
+                if (closeBtn && window.getComputedStyle(closeBtn).display !== 'none') {{
+                    closeBtn.dispatchEvent(new MouseEvent('click', {{bubbles: true, cancelable: true}}));
+                }} else if (openBtn && window.getComputedStyle(openBtn).display !== 'none') {{
+                    openBtn.dispatchEvent(new MouseEvent('click', {{bubbles: true, cancelable: true}}));
+                }} else if (openBtn) {{
+                    openBtn.dispatchEvent(new MouseEvent('click', {{bubbles: true, cancelable: true}}));
+                }}
                 return;
             }}
             curr = curr.parentElement;
