@@ -296,6 +296,7 @@ def show_war_room():
         
         queued = gs.get("queued_actions", {})
         gs["queued_actions"] = {}
+        blocked_backstabbers = set()
         
         # 1. Resolve Suspicions
         for actor, action in list(queued.items()):
@@ -306,6 +307,7 @@ def show_war_room():
                     # caught! target damaged
                     damage = 3000
                     gs["hp"][target] = max(0, int(gs["hp"].get(target, 0)) - damage)
+                    blocked_backstabbers.add(target)
                     push_ev("SYS", f"JUDICIAL DISCOVERY: {actor} caught {target} preparing a backstab! {target} suffers -{damage} HP.", actor)
                 else:
                     # false accusation! actor damaged
@@ -315,7 +317,7 @@ def show_war_room():
                 
         # 2. Resolve Backstabs
         for actor, action in list(queued.items()):
-            if action["action"] == "BACKSTAB" and gs["hp"].get(actor, 0) > 0:
+            if action["action"] == "BACKSTAB" and gs["hp"].get(actor, 0) > 0 and actor not in blocked_backstabbers:
                 target = action["target"]
                 # Break alliance
                 if actor in gs["alliances"] and target in gs["alliances"][actor]: gs["alliances"][actor].remove(target)
