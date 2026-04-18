@@ -32,12 +32,13 @@ def show_war_room():
     # ── Inject Theme ─────────────────────────────────────────
     st.markdown(get_full_css(), unsafe_allow_html=True)
 
-    # ── Auto-Refresh Timer (Ticks every 2s) ─────────────────
-    st_autorefresh(interval=2000, limit=None, key="ot_refresh")
+    # ── Auto-Refresh Timer (Ticks every 10s) ─────────────────
+    st_autorefresh(interval=10000, limit=None, key="ot_refresh")
     
     username = st.session_state.username
-    user     = get_user(username)
-    MT       = user["team"]
+    users    = load_users()
+    user     = users.get(username, {})
+    MT       = user.get("team")
     dn       = user.get("display_name", username)
 
     # ── SESSION DEFAULTS ─────────────────────────────────────
@@ -79,8 +80,8 @@ def show_war_room():
     my_terr = tc.get(MT, 0)
 
     # ── SHARED COMPONENTS ────────────────────────────────────
-    render_sidebar(gs, tc, dn, MT, my_hp, my_ap, my_terr, mins_left, secs_left, pct_left, redis_live)
-    render_header(gs, tc, dn, MT, mins_left, secs_left, pct_left)
+    render_sidebar(gs, tc, dn, MT, my_hp, my_ap, my_terr, mins_left, secs_left, pct_left, redis_live, teams, users)
+    render_header(gs, tc, dn, MT, mins_left, secs_left, pct_left, teams)
 
     # ── VICTORY CONDITION DISPLAY ────────────────────────────
     if gs.get("game_over"):
@@ -95,8 +96,8 @@ def show_war_room():
         """, unsafe_allow_html=True)
         return  # Halt loading normal dashboard
         
-    # ── 1-MINUTE POPUP BOT WARNING ───────────────────────────
-    if remaining <= 60 and MT not in gs.get("bypassed", {}) and gs["hp"].get(MT, 0) > 0:
+    # ── 2-MINUTE POPUP BOT WARNING ───────────────────────────
+    if remaining <= 120 and MT not in gs.get("bypassed", {}) and gs["hp"].get(MT, 0) > 0:
         db_code = gs.get("bots", {}).get(MT, "# Auto-Generated\\nprint('DEFEND')")
         stdout, err = execute_bot(db_code, MT, gs, teams)
         plan_msg = stdout if stdout else "(No Output / Formatting Error)"

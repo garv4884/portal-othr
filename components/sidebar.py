@@ -9,8 +9,7 @@ from config import STARTING_HP
 
 
 def render_sidebar(gs, tc, dn, MT, my_hp, my_ap, my_terr,
-                   mins_left, secs_left, pct_left, redis_live):
-    teams_meta = load_teams()
+                   mins_left, secs_left, pct_left, redis_live, teams_meta, all_users):
     my_meta    = teams_meta.get(MT, {})
     MY_COLOR   = my_meta.get("color", "#00E5FF")
     hp_pct     = max(0.0, my_hp / STARTING_HP)
@@ -24,25 +23,34 @@ def render_sidebar(gs, tc, dn, MT, my_hp, my_ap, my_terr,
         <script>
         (function() {
             var d = window.parent.document;
-            if (window.parent.__OT_SIDEBAR_HOOKED__) return;
-            window.parent.__OT_SIDEBAR_HOOKED__ = true;
+            if (window.parent.__OT_SIDEBAR_HOOKED_V2__) return;
+            window.parent.__OT_SIDEBAR_HOOKED_V2__ = true;
 
             function toggleSidebar() {
-                var sb = d.querySelector('[data-testid="stSidebar"]');
-                var isClosed = !sb || sb.getBoundingClientRect().width < 50;
-                var btn;
-                if (isClosed) {
-                    btn = d.querySelector('[data-testid="collapsedControl"] button') || d.querySelector('[data-testid="collapsedControl"]');
-                } else {
-                    btn = d.querySelector('[data-testid="stSidebarCollapseButton"] button') || d.querySelector('[data-testid="stSidebarCollapseButton"]');
-                }
-                if (btn) btn.click();
+                var openParams = d.querySelectorAll('[data-testid="collapsedControl"] svg, [data-testid="collapsedControl"] button, [data-testid="collapsedControl"]');
+                var closeParams = d.querySelectorAll('[data-testid="stSidebarCollapseButton"] svg, [data-testid="stSidebarCollapseButton"] button, [data-testid="stSidebarCollapseButton"]');
+                
+                var clicked = false;
+                closeParams.forEach(function(el) {
+                    if (!clicked && el.offsetParent !== null) {
+                        el.dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true}));
+                        clicked = true;
+                    }
+                });
+                if (clicked) return;
+                
+                openParams.forEach(function(el) {
+                    if (!clicked && el.offsetParent !== null) {
+                       el.dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true}));
+                       clicked = true;
+                    }
+                });
             }
 
             d.addEventListener('click', function(e) {
                 var curr = e.target;
                 while (curr && curr !== d.body) {
-                    if (curr.id === 'ot-logo-btn') {
+                    if (curr.id === 'ot-logo-btn' || curr.id === 'sticky-sidebar-toggle') {
                         e.preventDefault();
                         e.stopPropagation();
                         toggleSidebar();
@@ -76,7 +84,6 @@ def render_sidebar(gs, tc, dn, MT, my_hp, my_ap, my_terr,
         # ── Sovereign Identity ────────────────────────────────
         my_meta      = teams_meta.get(MT, {})
         members      = my_meta.get("members", [st.session_state.username])
-        all_users    = load_users()
         member_names = [all_users.get(m, {}).get("display_name", m) for m in members]
         pills = "".join(f'<span class="member-pill">{n}</span>' for n in member_names)
 
