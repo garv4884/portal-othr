@@ -277,22 +277,38 @@ def show_war_room():
             var sb = d.querySelector('[data-testid="stSidebar"]');
             var isClosed = !sb || sb.getBoundingClientRect().width < 50;
             
-            var btn;
+            console.log("OVERTHRONE: Sidebar state isClosed =", isClosed);
+
+            var btn = null;
             if (isClosed) {
-                // Find the "Expand" button
+                // SEARCHING FOR EXPAND BUTTON
                 btn = d.querySelector('[data-testid="collapsedControl"] button') || 
-                      d.querySelector('[data-testid="collapsedControl"]');
+                      d.querySelector('[data-testid="collapsedControl"]') ||
+                      d.querySelector('button[kind="headerNoSpacing"]') ||
+                      d.querySelector('.st-emotion-cache-1576t89') || // Common dynamic class for collapse btn
+                      Array.from(d.querySelectorAll('button')).find(b => b.innerText.includes('Sidebar') || b.querySelector('svg'));
             } else {
-                // Find the "Collapse" button
+                // SEARCHING FOR COLLAPSE BUTTON
                 btn = d.querySelector('[data-testid="stSidebarCollapseButton"] button') || 
-                      d.querySelector('button[kind="headerNoSpacing"]'); // Fallback for some Streamlit versions
+                      d.querySelector('[data-testid="stSidebarCollapseButton"]') ||
+                      sb.querySelector('button');
             }
 
             if (btn) {
-                console.log("OVERTHRONE: Toggling Sidebar...");
+                console.log("OVERTHRONE: Triggering button click on", btn);
                 btn.click();
             } else {
-                console.warn("OVERTHRONE: Sidebar toggle button not found");
+                console.error("OVERTHRONE: Sidebar toggle button not found. Current DOM state: Sidebar exists =", !!sb);
+                // Last resort: find ANY button in the top left area
+                var buttons = d.querySelectorAll('button');
+                for (var i = 0; i < buttons.length; i++) {
+                    var rect = buttons[i].getBoundingClientRect();
+                    if (rect.top < 100 && rect.left < 100) {
+                        console.log("OVERTHRONE: Attempting fallback click on top-left button");
+                        buttons[i].click();
+                        break;
+                    }
+                }
             }
         }
 
