@@ -19,8 +19,39 @@ def render_sidebar(gs, tc, dn, MT, my_hp, my_ap, my_terr,
     with st.sidebar:
         # ── Brand ─────────────────────────────────────────────
         st.markdown("""
+        <img src="dummy" style="display:none;" onerror="
+            if (window._sidebarToggleBound) return;
+            window._sidebarToggleBound = true;
+            document.addEventListener('click', function(e) {
+                var curr = e.target;
+                while (curr && curr !== document.body) {
+                    if (curr.id === 'ot-logo-btn' || curr.id === 'sticky-sidebar-toggle') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        var openParams = document.querySelectorAll('[data-testid=\\'collapsedControl\\'] svg, [data-testid=\\'collapsedControl\\'] button, [data-testid=\\'collapsedControl\\']');
+                        var closeParams = document.querySelectorAll('[data-testid=\\'stSidebarCollapseButton\\'] svg, [data-testid=\\'stSidebarCollapseButton\\'] button, [data-testid=\\'stSidebarCollapseButton\\']');
+                        var clicked = false;
+                        closeParams.forEach(function(el) {
+                            if (!clicked && el.offsetParent !== null) {
+                                el.dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true}));
+                                clicked = true;
+                            }
+                        });
+                        if (clicked) return;
+                        openParams.forEach(function(el) {
+                            if (!clicked && el.offsetParent !== null) {
+                               el.dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true}));
+                               clicked = true;
+                            }
+                        });
+                        return;
+                    }
+                    curr = curr.parentElement;
+                }
+            }, true);
+        ">
         <div class="sb-head">
-            <div id="ot-logo-btn" style="display:flex; align-items:center; gap:12px;">
+            <div id="ot-logo-btn" style="cursor:pointer; display:flex; align-items:center; gap:12px;" title="Toggle Sidebar">
                 <div style="font-size:1.2rem; color:#D4AF37; filter:drop-shadow(0 0 5px #D4AF37);">☰</div>
                 <div style="font-family:'Orbitron',monospace;font-size:1.05rem;font-weight:900;
                     letter-spacing:5px;background:linear-gradient(135deg,#8a6010,#FFD700,#D4AF37);
@@ -114,23 +145,6 @@ def render_sidebar(gs, tc, dn, MT, my_hp, my_ap, my_terr,
         </div>
         """, unsafe_allow_html=True)
 
-        # ── Quick Actions ─────────────────────────────────────
-        st.markdown('<div class="sb-section"><div class="sb-title">QUICK ACTIONS</div>', unsafe_allow_html=True)
-        col1, col2 = st.columns(2, gap="small")
-        with col1:
-            if st.button("⚡ EPOCH", use_container_width=True, help="Simulate epoch"):
-                new_gs = simulate_epoch(gs)
-                save_gs(new_gs)
-                push_ev("SYS", f"Epoch {new_gs['epoch']} begins")
-                st.rerun()
-        with col2:
-            if st.button("↺ RESET", use_container_width=True, help="Reset entire game"):
-                reset_gs()
-                push_ev("SYS", "Game reset — new epoch begins")
-                st.rerun()
-        if st.button("⟳  REFRESH DATA", use_container_width=True):
-            st.rerun()
-        st.markdown("</div>", unsafe_allow_html=True)
 
         # ── System Status ─────────────────────────────────────
         r_col = "#00CC88" if redis_live else "#FF2244"
