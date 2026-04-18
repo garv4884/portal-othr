@@ -1,5 +1,6 @@
 import hashlib
 import json
+import logging
 import os
 import subprocess
 import sys
@@ -112,6 +113,8 @@ class SupabaseStore:
 @st.cache_resource
 def get_store():
 	global SUPABASE_LAST_ERROR
+	global ACTIVE_DB_NAME
+	global ACTIVE_DB_TABLE
 	try:
 		url = st.secrets.get("SUPABASE_URL", os.getenv("SUPABASE_URL", ""))
 		key = st.secrets.get("SUPABASE_KEY", os.getenv("SUPABASE_KEY", ""))
@@ -121,16 +124,32 @@ def get_store():
 		store = SupabaseStore(url, key, table)
 		store.ping()
 		SUPABASE_LAST_ERROR = ""
+		ACTIVE_DB_NAME = "SUPABASE"
+		ACTIVE_DB_TABLE = table
 		return store, True
 	except Exception as exc:
 		SUPABASE_LAST_ERROR = str(exc)
+		ACTIVE_DB_NAME = "IN_MEMORY"
+		ACTIVE_DB_TABLE = ""
 		return InMemoryStore(), False
 
 
 SUPABASE_LAST_ERROR = ""
+ACTIVE_DB_NAME = "UNKNOWN"
+ACTIVE_DB_TABLE = ""
 R, supabase_live = get_store()
 # Backward-compatible flag used by UI labels.
 redis_live = supabase_live
+
+_LOG = logging.getLogger(__name__)
+if supabase_live:
+	msg = f"[DB] backend={ACTIVE_DB_NAME} table={ACTIVE_DB_TABLE}"
+	print(msg)
+	_LOG.info(msg)
+else:
+	msg = f"[DB] backend={ACTIVE_DB_NAME} fallback_reason={SUPABASE_LAST_ERROR}"
+	print(msg)
+	_LOG.warning(msg)
 
 
 # -- ACCOUNTS -------------------------------------------------
