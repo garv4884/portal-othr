@@ -163,9 +163,6 @@ def show_war_room():
         left_col, right_col = st.columns([2.3, 1], gap="large")
 
         with left_col:
-            from components.header import render_kingdom_cards
-            render_kingdom_cards(gs, tc, MT)
-
             total_claimed = sum(1 for c in gs["grid"] if c)
             unclaimed = 30 - total_claimed
             st.markdown(f"""
