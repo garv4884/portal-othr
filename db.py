@@ -53,7 +53,6 @@ def get_redis():
         r.ping()
         return r, True
     except Exception:
-        from mock_redis import MockRedis
         return MockRedis(), False
 
 
