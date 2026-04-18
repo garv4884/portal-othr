@@ -17,7 +17,7 @@ def show_auth_page():
     </div>
     """, unsafe_allow_html=True)
 
-    tab = st.radio("", ["Sign In", "Register"], horizontal=True, label_visibility="collapsed")
+    tab = st.radio("Authentication mode", ["Sign In", "Register"], horizontal=True, label_visibility="collapsed")
     st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
     if tab == "Sign In":

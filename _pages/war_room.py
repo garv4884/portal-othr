@@ -13,7 +13,8 @@ from streamlit_autorefresh import st_autorefresh
 
 from db import (
     load_gs, load_evs, terr_count, load_teams, load_users,
-    push_ev, save_gs, reset_gs, redis_live, run_code_safe, get_user
+    push_ev, save_gs, reset_gs, redis_live, run_code_safe, get_user,
+    execute_bot, simulate_epoch
 )
 from config import (
     TASKS, DIFF_COLOR, EVENT_COLORS, STARTING_HP, STARTING_AP,
@@ -25,55 +26,6 @@ from components.header import render_header
 from components.sidebar import render_sidebar
 
 
-def execute_bot(code_str, MT, target_gs, teams_dict):
-    """Sandbox evaluates user heuristic code against valid target metadata."""
-    alliances = target_gs.get("alliances", {}).get(MT, [])
-    grid = target_gs["grid"]
-    adj = get_amoeba_adjacency(len(grid))
-    
-    my_cells = [i for i, owner in enumerate(grid) if owner == MT]
-    valid_targets = set()
-    for c in my_cells:
-        for n in adj.get(c, []):
-            owner = grid[n]
-            if owner != MT and owner not in alliances:
-                valid_targets.add(n)
-                
-    targets_data = []
-    for c in valid_targets:
-        owner = grid[c]
-        targets_data.append({
-            "_id": int(c),
-            "is_empty": owner == "",
-            "owner": owner,
-            "owner_hp": int(target_gs["hp"].get(owner, 0)) if owner else 0,
-            "owner_ap": int(target_gs["ap"].get(owner, 0)) if owner else 0,
-            "owner_territory": sum(1 for x in grid if x == owner) if owner else 0
-        })
-
-    import json
-    t_str = json.dumps(targets_data)
-    
-    injected_code = f"""
-TARGETS = {t_str}
-{code_str}
-
-best_score = -999999
-best_id = None
-try:
-    for t in TARGETS:
-        s = evaluate_target(t)
-        if s is not None and s > best_score:
-            best_score = s
-            best_id = t['_id']
-except Exception as e:
-    pass
-
-if best_id is not None:
-    print(f"__SYS_BOT_MOVE__ {{best_id}}")
-"""
-    stdout, stderr = run_code_safe(injected_code, timeout=2)
-    return stdout.strip(), stderr.strip()
 
 
 def show_war_room():
@@ -109,84 +61,7 @@ def show_war_room():
     
     # Check if epoch rolled over
     if remaining <= 0 and not gs.get("game_over"):
-        # Trigger epoch switch
-        gs["epoch"] += 1
-        gs["epoch_end"] = (datetime.utcnow() + timedelta(seconds=EPOCH_DURATION_SECS)).isoformat()
-        bypassed_teams = gs["bypassed"]
-        gs["bypassed"] = {} # clear for next epoch
-        if "bots" not in gs: gs["bots"] = {}
-        
-        queued = gs.get("queued_actions", {})
-        gs["queued_actions"] = {}
-        
-        # 1. Resolve Suspicions
-        for actor, action in list(queued.items()):
-            if action["action"] == "SUSPICION":
-                target = action["target"]
-                target_action = queued.get(target)
-                if target_action and target_action["action"] == "BACKSTAB" and target_action["target"] == actor:
-                    # caught! target damaged
-                    damage = 3000
-                    gs["hp"][target] = max(0, int(gs["hp"].get(target, 0)) - damage)
-                    push_ev("SYS", f"JUDICIAL DISCOVERY: {actor} caught {target} preparing a backstab! {target} suffers -{damage} HP.", actor)
-                else:
-                    # false accusation! actor damaged
-                    damage = 3000
-                    gs["hp"][actor] = max(0, int(gs["hp"].get(actor, 0)) - damage)
-                    push_ev("SYS", f"JUDICIAL FAILURE: {actor} falsely accused {target}. {actor} suffers -{damage} HP.", actor)
-                
-        # 2. Resolve Backstabs
-        for actor, action in list(queued.items()):
-            if action["action"] == "BACKSTAB" and gs["hp"].get(actor, 0) > 0:
-                target = action["target"]
-                # Break alliance
-                if actor in gs["alliances"] and target in gs["alliances"][actor]: gs["alliances"][actor].remove(target)
-                if target in gs["alliances"] and actor in gs["alliances"][target]: gs["alliances"][target].remove(actor)
-                
-                # massively damage target
-                damage = 3000
-                if target in gs["hp"]:
-                    gs["hp"][target] = max(0, int(gs["hp"][target]) - damage)
-                    push_ev("ATTACK", f"BETRAYAL! {actor} backstabbed {target} for {damage} HP damage!", actor)
-        
-        # 3. Execute Bot for every active team
-        for tname, bcode in gs["bots"].items():
-            if tname not in bypassed_teams:
-                # skip dead teams
-                if gs["hp"].get(tname, 0) <= 0: continue
-                stdout, err = execute_bot(bcode, tname, gs, teams)
-                if "__SYS_BOT_MOVE__" in stdout:
-                    try:
-                        # Extract the exact ID immediately following the secure token
-                        token_part = stdout.split("__SYS_BOT_MOVE__")[1].strip()
-                        cell_idx = int(token_part.split()[0])
-                        ap = int(gs["ap"].get(tname, 0))
-                        if ap >= ATTACK_COST_AP and gs["grid"][cell_idx] != tname:
-                            prev = gs["grid"][cell_idx]
-                            gs["grid"][cell_idx] = tname
-                            gs["ap"][tname] -= ATTACK_COST_AP
-                            if prev and prev in gs["hp"]:
-                                gs["hp"][prev] = max(0, int(gs["hp"][prev]) - 100)
-                            push_ev("ATTACK", f"BOT ({tname}) captured cell {cell_idx}!", tname)
-                    except:
-                        push_ev("SYS", f"BOT ({tname}) execution failed to parse attack move", tname)
-                        
-        # 4. Clean up eliminated map territories
-        for t, hp in list(gs["hp"].items()):
-            if hp <= 0:
-                for i in range(len(gs["grid"])):
-                    if gs["grid"][i] == t:
-                        gs["grid"][i] = ""
-                        
-        # 5. Victory Assessment
-        living = [t for t, hp in gs["hp"].items() if hp > 0]
-        if gs["epoch"] > 1 and len(gs["hp"]) > 1:
-            if len(living) == 1:
-                gs["game_over"] = living[0]
-            elif len(living) == 0:
-                gs["game_over"] = "DRAW"
-
-        save_gs(gs)
+        gs = simulate_epoch(gs)
         st.rerun()
 
     pct_left  = remaining / EPOCH_DURATION_SECS
