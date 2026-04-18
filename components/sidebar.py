@@ -5,7 +5,7 @@ Premium sidebar: identity, biometrics, epoch timer, quick actions.
 
 import streamlit as st
 from db import push_ev, reset_gs, save_gs, load_teams, load_users, simulate_epoch
-from config import STARTING_HP, TEAM_COLORS
+from config import STARTING_HP
 
 
 def render_sidebar(gs, tc, dn, MT, my_hp, my_ap, my_terr,
@@ -89,7 +89,7 @@ def render_sidebar(gs, tc, dn, MT, my_hp, my_ap, my_terr,
             </div>
             <div class="sb-row">
                 <span class="sb-lbl">KINGDOM</span>
-                <span class="sb-val" style="color:{MY_COLOR}">{TEAM_COLORS[MT]['icon']} {MT}</span>
+                <span class="sb-val" style="color:{MY_COLOR}">{my_meta.get('icon', '👑')} {MT}</span>
             </div>
         </div>
         <div class="sb-section">
