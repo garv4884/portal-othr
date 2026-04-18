@@ -261,11 +261,40 @@ def show_war_room():
             st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
+    # ── SIDEBAR TOGGLE SCRIPT ────────────────────────────────
+    components.html("""
+    <script>
+    (function() {
+        var d = window.parent.document;
+        function toggleSidebar() {
+            var sb = d.querySelector('[data-testid="stSidebar"]');
+            var open = sb && sb.getBoundingClientRect().width > 50;
+            if (open) {
+                var b = d.querySelector('[data-testid="stSidebarCollapseButton"] button') || d.querySelector('[data-testid="stSidebarCollapseButton"]');
+                if (b) b.click();
+            } else {
+                var b = d.querySelector('[data-testid="collapsedControl"] button') || d.querySelector('[data-testid="collapsedControl"]');
+                if (b) b.click();
+            }
+        }
+        function hook() {
+            var logo = d.getElementById("ot-logo-btn");
+            if (logo && !logo.hasAttribute('data-bound')) {
+                logo.onclick = toggleSidebar;
+                logo.setAttribute('data-bound', 'true');
+            }
+        }
+        setInterval(hook, 500); 
+    })();
+    </script>
+    """, height=0)
+
     # ── HEADER ───────────────────────────────────────────────
     st.markdown(f"""
 <div class="ot-hdr">
-    <div>
-        <div class="ot-logo">OVERTHRONE</div>
+    <div style="display:flex; align-items:center; gap:1.2rem;">
+        <div class="ot-logo" id="ot-logo-btn" style="cursor:pointer; transition: filter 0.3s;" title="Toggle Sidebar" onmouseover="this.style.filter='drop-shadow(0 0 10px rgba(212,175,55,0.8))'" onmouseout="this.style.filter='none'">OVERTHRONE</div>
+        <div style="height:25px; width:1px; background:rgba(212,175,55,0.25); margin:0 5px"></div>
         <div class="ot-subtitle">HELIX x ISTE · THE ULTIMATE KINGDOM SIMULATION</div>
     </div>
     <div style="display:flex;align-items:center;gap:1.2rem">
@@ -307,12 +336,18 @@ def show_war_room():
                 plan_msg = f"ATTACK CELL {cell_id}"
             except: pass
         st.markdown(f"""
-        <div class="warning-popup">
-            <h3 style="font-family:'Orbitron',monospace;color:#FF2244;margin:0 0 10px 0;letter-spacing:4px">⚠️ IMMINENT BOT EXECUTION</h3>
-            <div style="font-family:'Share Tech Mono',monospace;color:#dde0ee;font-size:1rem;margin-bottom:15px">
-                Epoch concludes in {int(remaining)}s. Your bot evaluated the targets:<br>
-                <strong style="color:#00E5FF;font-size:1.2rem;display:block;margin-top:10px">{plan_msg}</strong>
+        <div class="warning-popup" style="background:linear-gradient(180deg, rgba(255,34,68,0.2) 0%, rgba(255,34,68,0.05) 100%); border:2px solid #FF2244; box-shadow:0 0 30px rgba(255,34,68,0.2);">
+            <div style="display:flex; align-items:center; justify-content:center; gap:15px; margin-bottom:15px;">
+                <div style="width:40px; height:2px; background:#FF2244;"></div>
+                <h3 style="font-family:'Orbitron',monospace;color:#FF2244;margin:0;letter-spacing:6px;font-size:1.4rem">⚠️ IMMINENT BOT EXECUTION</h3>
+                <div style="width:40px; height:2px; background:#FF2244;"></div>
             </div>
+            <div style="font-family:'Share Tech Mono',monospace;color:#dde0ee;font-size:1.1rem;margin-bottom:20px; text-shadow: 0 0 10px rgba(221,224,238,0.3);">
+                Epoch terminal state reached in <span style="color:#FF2244; font-weight:700;">{int(remaining)}s</span>.<br>
+                Subroutine analysis complete. Planned move detected:<br>
+                <strong style="color:#00E5FF;font-size:1.4rem;display:block;margin-top:12px; letter-spacing:2px; border:1px solid rgba(0,229,255,0.3); padding:10px; background:rgba(0,229,255,0.05);">{plan_msg}</strong>
+            </div>
+            <div style="font-size:0.75rem; color:#888; letter-spacing:1px;">USE MANUAL OVERRIDE (BYPASS CARD) TO FREEZE BOT ACTIONS</div>
         </div>
         """, unsafe_allow_html=True)
         col1, col2, col3 = st.columns([1,2,1])

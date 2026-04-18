@@ -72,13 +72,7 @@ def generate_amoeba_points(n=30, width=600, height=500):
         points.append((x, y))
     return points
 
+AMO_ADJ = {0: [1, 2, 3, 4, 5, 8], 1: [0, 3, 4, 6, 9], 2: [0, 4, 5, 7, 10, 15], 3: [0, 1, 6, 8, 11], 4: [0, 1, 2, 7, 9, 12, 17], 5: [0, 2, 8, 10, 13, 18], 6: [1, 3, 9, 11, 14, 19], 7: [2, 4, 12, 15, 20], 8: [0, 3, 5, 11, 13, 16, 21, 29], 9: [1, 4, 6, 14, 17, 22], 10: [2, 5, 15, 18, 23], 11: [3, 6, 8, 16, 19, 24], 12: [4, 7, 17, 20, 25], 13: [5, 8, 18, 21, 26], 14: [6, 9, 19, 22, 27], 15: [2, 7, 10, 20, 23, 28], 16: [8, 11, 24, 29], 17: [4, 9, 12, 22, 25], 18: [5, 10, 13, 23, 26], 19: [6, 11, 14, 24, 27], 20: [7, 12, 15, 25, 28], 21: [8, 13, 26, 29], 22: [9, 14, 17, 27], 23: [10, 15, 18, 26, 28], 24: [11, 16, 19, 27, 29], 25: [12, 17, 20], 26: [13, 18, 21, 23], 27: [14, 19, 22, 24], 28: [15, 20, 23], 29: [8, 16, 21, 24]}
+
 def get_amoeba_adjacency(n=30):
-    from scipy.spatial import Delaunay
-    points = generate_amoeba_points(n)
-    tri = Delaunay(points)
-    adj = {i: set() for i in range(n)}
-    for simplex in tri.simplices:
-        adj[simplex[0]].update([simplex[1], simplex[2]])
-        adj[simplex[1]].update([simplex[0], simplex[2]])
-        adj[simplex[2]].update([simplex[0], simplex[1]])
-    return {k: list(v) for k, v in adj.items()}
+    return {k: v for k, v in AMO_ADJ.items() if k < n}
