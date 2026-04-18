@@ -4,13 +4,13 @@ Premium sidebar: identity, biometrics, epoch timer, quick actions.
 """
 
 import streamlit as st
-from db import push_ev, reset_gs, save_gs, load_teams_meta, load_users, simulate_epoch
+from db import push_ev, reset_gs, save_gs, load_teams, load_users, simulate_epoch
 from config import STARTING_HP
 
 
 def render_sidebar(gs, tc, dn, MT, my_hp, my_ap, my_terr,
                    mins_left, secs_left, pct_left, redis_live):
-    teams_meta = load_teams_meta()
+    teams_meta = load_teams()
     my_meta    = teams_meta.get(MT, {})
     MY_COLOR   = my_meta.get("color", "#00E5FF")
     hp_pct     = max(0.0, my_hp / STARTING_HP)

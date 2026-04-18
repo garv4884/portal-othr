@@ -5,11 +5,11 @@ Header bar + kingdom status cards.
 
 import streamlit as st
 from config import STARTING_HP
-from db import load_teams_meta
+from db import load_teams
 
 
 def render_header(gs, tc, dn, MT, mins_left, secs_left, pct_left):
-    teams_meta  = load_teams_meta()
+    teams_meta  = load_teams()
     my_meta     = teams_meta.get(MT, {})
     MY_COLOR    = my_meta.get("color", "#00E5FF")
     timer_color = "#FF2244" if mins_left < 3 else ("#FFB800" if mins_left < 7 else "#FFD700")
