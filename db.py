@@ -43,7 +43,7 @@ def get_redis():
         r.ping()
         return r, True
     except Exception:
-        from mock_redis import MockRedis  # Ensure you have your mock fallback accessible
+        from mock_redis import MockRedis
         return MockRedis(), False
 
 
