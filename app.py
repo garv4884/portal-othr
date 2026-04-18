@@ -2,7 +2,7 @@
 OVERTHRONE :: app.py
 Entry point. Only handles page config and routing.
 Run: streamlit run app.py
-Requires: pip install streamlit redis
+Requires: pip install streamlit supabase
 """
 
 import streamlit as st

@@ -40,7 +40,7 @@ def show_admin_page():
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
         if st.button("☠️ NUKE DATABASE & RESET GAME", use_container_width=True):
-            # Erase all keys in the local Redis
+            # Erase all persisted state in the active backend
             R.flushdb()
             st.success("DATABASE FLUSHED SUCCESSFULLY. Redirecting...")
             st.session_state.clear()

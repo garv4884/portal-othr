@@ -30,7 +30,7 @@ def render_ws_terminal(MT: str):
 
     base_lines = [
         {"t": "sys",  "m": "[SYSTEM] ws://localhost:8765 · Status: LISTENING"},
-        {"t": "sys",  "m": "[SYSTEM] Connected clients: 4 · Redis pub/sub: ACTIVE"},
+        {"t": "sys",  "m": "[SYSTEM] Connected clients: 4 · Event relay: ACTIVE"},
         {"t": "info", "m": "[00:01:12] EPOCH_START · Epoch 1 · Phase: MOBILIZATION"},
         {"t": "info", "m": "[00:02:44] TASK_COMPLETE · Team Alpha · +750 AP"},
         {"t": "err",  "m": "[00:03:11] ATTACK · Crimson → Alpha · Cell 15 captured"},
@@ -44,9 +44,8 @@ def render_ws_terminal(MT: str):
     st.markdown(f'<div class="ws-term">{lines_html}</div>', unsafe_allow_html=True)
 
     with st.expander("ws_server.py — run in separate terminal"):
-        st.code("""import asyncio, websockets, json, redis
+        st.code("""import asyncio, websockets, json
 
-r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 CLIENTS = set()
 
 async def handler(ws, path="/"):
@@ -54,8 +53,6 @@ async def handler(ws, path="/"):
     try:
         async for msg in ws:
             data = json.loads(msg)
-            r.lpush("ot:events", json.dumps(data))
-            r.publish("ot:ws", json.dumps(data))
             if CLIENTS:
                 await asyncio.gather(*[c.send(json.dumps(data)) for c in CLIENTS])
     finally:

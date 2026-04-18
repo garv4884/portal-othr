@@ -211,10 +211,42 @@ if best_id is not None:
     return stdout.strip(), stderr.strip()
 
 
+def _render_live_timer(epoch_end_iso: str, timer_color: str):
+    """Client-side countdown so the timer remains smooth without full Streamlit reruns."""
+    try:
+        end_ms = int(datetime.fromisoformat(epoch_end_iso).timestamp() * 1000)
+    except Exception:
+        end_ms = int((datetime.utcnow() + timedelta(seconds=EPOCH_DURATION_SECS)).timestamp() * 1000)
+
+    components.html(
+        f"""
+        <div id="ot-live-timer" style="
+            font-family:'Orbitron',monospace;
+            color:{timer_color};
+            font-size:1.15rem;
+            letter-spacing:2px;
+            text-align:right;
+            padding:0 4px;
+        ">00:00</div>
+        <script>
+            const endMs = {end_ms};
+            const el = document.getElementById('ot-live-timer');
+            function tick() {{
+                const now = Date.now();
+                const remaining = Math.max(0, Math.floor((endMs - now) / 1000));
+                const mm = String(Math.floor(remaining / 60)).padStart(2, '0');
+                const ss = String(remaining % 60).padStart(2, '0');
+                el.textContent = `${{mm}}:${{ss}}`;
+            }}
+            tick();
+            setInterval(tick, 1000);
+        </script>
+        """,
+        height=34,
+    )
+
+
 def show_war_room():
-    # ── Auto-Refresh Timer (Ticks every 2s) ─────────────────
-    st_autorefresh(interval=2000, limit=None, key="ot_refresh")
-    
     username = st.session_state.username
     user     = get_user(username)
     MT       = user["team"]
@@ -239,6 +271,16 @@ def show_war_room():
         remaining = max(0.0, (epoch_end - datetime.utcnow()).total_seconds())
     except Exception:
         remaining = EPOCH_DURATION_SECS
+
+    # ── Adaptive Auto-Refresh (reduce lag during normal play) ─
+    # Keep UI mostly static; only poll fast near epoch rollover.
+    if remaining <= 45:
+        refresh_ms = 2000
+    elif remaining <= 180:
+        refresh_ms = 8000
+    else:
+        refresh_ms = 20000 if redis_live else 12000
+    st_autorefresh(interval=refresh_ms, limit=None, key="ot_refresh")
 
     if "bypassed" not in gs: gs["bypassed"] = {}
     if "shadow_task_ap" not in gs: gs["shadow_task_ap"] = {}
@@ -424,6 +466,7 @@ def show_war_room():
 </div>
 <div class="ot-tbar"><div class="ot-tbar-fill" style="width:{pct_left*100:.1f}%"></div></div>
 """, unsafe_allow_html=True)
+    _render_live_timer(gs["epoch_end"], timer_color)
 
     # ── VICTORY CONDITION DISPLAY ────────────────────────────
     if gs.get("game_over"):
@@ -914,7 +957,8 @@ def show_war_room():
     """
     target dictionary looks like:
     {
-      "is_empty": bool,
+      "is_empty": boolwhole code base acccordingly
+      ,
       "owner": str,
       "owner_hp": int,
       "owner_ap": int,

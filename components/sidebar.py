@@ -132,12 +132,12 @@ def render_sidebar(gs, tc, dn, MT, my_hp, my_ap, my_terr,
 
         # ── System Status ─────────────────────────────────────
         r_col = "#00CC88" if redis_live else "#FF2244"
-        r_txt = "● CONNECTED" if redis_live else "● MOCK (LOCAL)"
+        r_txt = "● CONNECTED" if redis_live else "● IN-MEMORY (RUN SQL SETUP)"
         st.markdown(f"""
         <div class="sb-section">
             <div class="sb-title">SYSTEM STATUS</div>
             <div class="sb-row">
-                <span class="sb-lbl">REDIS</span>
+                <span class="sb-lbl">SUPABASE</span>
                 <span style="font-family:'Share Tech Mono',monospace;font-size:0.6rem;color:{r_col}">{r_txt}</span>
             </div>
             <div class="sb-row">
