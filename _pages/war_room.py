@@ -261,30 +261,54 @@ def show_war_room():
             st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # ── SIDEBAR TOGGLE SCRIPT ────────────────────────────────
+    # ── SIDEBAR TOGGLE SCRIPT (Robust Version) ───────────────
     components.html("""
     <script>
     (function() {
         var d = window.parent.document;
+        
+        // Prevent multiple hooks
+        if (window.parent.__OT_SIDEBAR_HOOKED__) return;
+        window.parent.__OT_SIDEBAR_HOOKED__ = true;
+
+        console.log("OVERTHRONE: Sidebar Controller Initialized");
+
         function toggleSidebar() {
             var sb = d.querySelector('[data-testid="stSidebar"]');
-            var open = sb && sb.getBoundingClientRect().width > 50;
-            if (open) {
-                var b = d.querySelector('[data-testid="stSidebarCollapseButton"] button') || d.querySelector('[data-testid="stSidebarCollapseButton"]');
-                if (b) b.click();
+            var isClosed = !sb || sb.getBoundingClientRect().width < 50;
+            
+            var btn;
+            if (isClosed) {
+                // Find the "Expand" button
+                btn = d.querySelector('[data-testid="collapsedControl"] button') || 
+                      d.querySelector('[data-testid="collapsedControl"]');
             } else {
-                var b = d.querySelector('[data-testid="collapsedControl"] button') || d.querySelector('[data-testid="collapsedControl"]');
-                if (b) b.click();
+                // Find the "Collapse" button
+                btn = d.querySelector('[data-testid="stSidebarCollapseButton"] button') || 
+                      d.querySelector('button[kind="headerNoSpacing"]'); // Fallback for some Streamlit versions
+            }
+
+            if (btn) {
+                console.log("OVERTHRONE: Toggling Sidebar...");
+                btn.click();
+            } else {
+                console.warn("OVERTHRONE: Sidebar toggle button not found");
             }
         }
-        function hook() {
-            var logo = d.getElementById("ot-logo-btn");
-            if (logo && !logo.hasAttribute('data-bound')) {
-                logo.onclick = toggleSidebar;
-                logo.setAttribute('data-bound', 'true');
+
+        // Global listener on parent document handles clicks even if logo is rerendered
+        d.addEventListener('click', function(e) {
+            var curr = e.target;
+            while (curr && curr !== d.body) {
+                if (curr.id === 'ot-logo-btn') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    toggleSidebar();
+                    return;
+                }
+                curr = curr.parentElement;
             }
-        }
-        setInterval(hook, 500); 
+        }, true);
     })();
     </script>
     """, height=0)
@@ -293,7 +317,10 @@ def show_war_room():
     st.markdown(f"""
 <div class="ot-hdr">
     <div style="display:flex; align-items:center; gap:1.2rem;">
-        <div class="ot-logo" id="ot-logo-btn" style="cursor:pointer; transition: filter 0.3s;" title="Toggle Sidebar" onmouseover="this.style.filter='drop-shadow(0 0 10px rgba(212,175,55,0.8))'" onmouseout="this.style.filter='none'">OVERTHRONE</div>
+        <div id="ot-logo-btn" style="cursor:pointer; display:flex; align-items:center; gap:12px;" title="Toggle Sidebar">
+            <div style="font-size:1.5rem; color:var(--gold); filter:drop-shadow(0 0 5px var(--gold));">☰</div>
+            <div class="ot-logo" style="transition: filter 0.3s;" onmouseover="this.style.filter='drop-shadow(0 0 10px rgba(212,175,55,0.8))'" onmouseout="this.style.filter='none'">OVERTHRONE</div>
+        </div>
         <div style="height:25px; width:1px; background:rgba(212,175,55,0.25); margin:0 5px"></div>
         <div class="ot-subtitle">HELIX x ISTE · THE ULTIMATE KINGDOM SIMULATION</div>
     </div>
