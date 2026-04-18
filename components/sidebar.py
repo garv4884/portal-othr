@@ -17,7 +17,7 @@ def render_sidebar(gs, tc, dn, MT, my_hp, my_ap, my_terr,
     hp_col     = "#FF2244" if my_hp < 1500 else ("#FFB800" if my_hp < 3000 else MY_COLOR)
 
     with st.sidebar:
-        # ── Brand ─────────────────────────────────────────────
+        st.markdown("""
         <img src="dummy" style="display:none;" onerror="if(!window._otTgl){{window._otTgl=1;document.addEventListener('click',e=>{{let c=e.target;while(c&&c!==document.body){{if(c.id==='ot-logo-btn'||c.id==='sticky-sidebar-toggle'){{e.preventDefault();e.stopPropagation();let o=document.querySelector('[data-testid=\\'collapsedControl\\']');let x=document.querySelector('[data-testid=\\'stSidebarCollapseButton\\']');if(x&&window.getComputedStyle(x).display!=='none')x.dispatchEvent(new MouseEvent('click',{{bubbles:true,cancelable:true}}));else if(o)o.dispatchEvent(new MouseEvent('click',{{bubbles:true,cancelable:true}}));return;}}c=c.parentElement;}}}},true);}}">
         <div class="sb-head">
             <div id="ot-logo-btn" style="cursor:pointer; display:flex; align-items:center; gap:12px;" title="Toggle Sidebar">
