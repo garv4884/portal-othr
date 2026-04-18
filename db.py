@@ -19,6 +19,10 @@ class MockRedis:
         self._lists = {}
     def get(self, k): return self._d.get(k)
     def set(self, k, v, ex=None): self._d[k] = v; return True
+    def setnx(self, k, v):
+        if k in self._d: return False
+        self._d[k] = v; return True
+    def expire(self, k, t): return True
     def lpush(self, k, *vals):
         if k not in self._lists: self._lists[k] = []
         for v in vals: self._lists[k].insert(0, v)
@@ -188,6 +192,13 @@ def load_gs():
 
 def save_gs(s): R.set("ot:state", json.dumps(s))
 def reset_gs(): R.delete("ot:state")
+
+def acquire_epoch_lock(epoch_num):
+    key = f"ot:epoch_lock_{epoch_num}"
+    if R.setnx(key, "1"):
+        R.expire(key, 30)
+        return True
+    return False
 
 def push_ev(kind, msg, team=None):
     ev = {"ts": datetime.utcnow().strftime("%H:%M:%S"), "kind": kind, "msg": msg, "team": team}

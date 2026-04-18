@@ -14,7 +14,7 @@ from streamlit_autorefresh import st_autorefresh
 from db import (
     load_gs, load_evs, terr_count, load_teams, load_users,
     push_ev, save_gs, reset_gs, redis_live, run_code_safe, get_user,
-    execute_bot, simulate_epoch
+    execute_bot, simulate_epoch, acquire_epoch_lock
 )
 from config import (
     TASKS, DIFF_COLOR, EVENT_COLORS, STARTING_HP, STARTING_AP,
@@ -27,13 +27,26 @@ from components.sidebar import render_sidebar
 
 
 
+@st.cache_data(ttl=60, show_spinner=False)
+def get_bot_preview(bcode, tname, gs_json, teams_json):
+    _gs = json.loads(gs_json)
+    _t = json.loads(teams_json)
+    return execute_bot(bcode, tname, _gs, _t)
 
 def show_war_room():
     # ── Inject Theme ─────────────────────────────────────────
     st.markdown(get_full_css(), unsafe_allow_html=True)
 
-    # ── Auto-Refresh Timer (Ticks every 10s) ─────────────────
-    st_autorefresh(interval=10000, limit=None, key="ot_refresh")
+    # ── Dynamic Auto-Refresh Timer Sync ──────────────────────
+    if "clock_sync" not in st.session_state:
+        # Calculate exactly how many milliseconds remain until the next UTC 10-second boundary
+        now = datetime.utcnow().timestamp()
+        ms_until_10s = int((10.0 - (now % 10.0)) * 1000)
+        st.session_state.clock_sync = True
+        st_autorefresh(interval=ms_until_10s, limit=1, key="ot_sync_refresh")
+    else:
+        # Now permanently aligned to the 10-second global tick
+        st_autorefresh(interval=10000, limit=None, key="ot_std_refresh")
     
     username = st.session_state.username
     users    = load_users()
@@ -58,8 +71,6 @@ def show_war_room():
     try:
         epoch_end = datetime.fromisoformat(gs["epoch_end"])
         remaining = max(0.0, (epoch_end - datetime.utcnow()).total_seconds())
-        # Quantize to strictly 10-second boundaries so all clients see uniform numbers
-        remaining -= (remaining % 10)
     except Exception:
         remaining = EPOCH_DURATION_SECS
 
@@ -67,7 +78,10 @@ def show_war_room():
     
     # Check if epoch rolled over
     if remaining <= 0 and not gs.get("game_over"):
-        gs = simulate_epoch(gs)
+        if acquire_epoch_lock(gs["epoch"]):
+            gs = simulate_epoch(gs)
+        else:
+            time.sleep(1.5) # Await the prime evaluator to finish simulation
         st.rerun()
 
     pct_left  = remaining / EPOCH_DURATION_SECS
@@ -101,7 +115,7 @@ def show_war_room():
     # ── 2-MINUTE POPUP BOT WARNING ───────────────────────────
     if remaining <= 120 and MT not in gs.get("bypassed", {}) and gs["hp"].get(MT, 0) > 0:
         db_code = gs.get("bots", {}).get(MT, "# Auto-Generated\\nprint('DEFEND')")
-        stdout, err = execute_bot(db_code, MT, gs, teams)
+        stdout, err = get_bot_preview(db_code, MT, json.dumps(gs), json.dumps(teams))
         plan_msg = stdout if stdout else "(No Output / Formatting Error)"
         if "__SYS_BOT_MOVE__" in plan_msg:
             try:
