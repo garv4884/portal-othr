@@ -29,6 +29,9 @@ from components.sidebar import render_sidebar
 
 
 def show_war_room():
+    # ── Inject Theme ─────────────────────────────────────────
+    st.markdown(get_full_css(), unsafe_allow_html=True)
+
     # ── Auto-Refresh Timer (Ticks every 2s) ─────────────────
     st_autorefresh(interval=2000, limit=None, key="ot_refresh")
     
@@ -160,6 +163,9 @@ def show_war_room():
         left_col, right_col = st.columns([2.3, 1], gap="large")
 
         with left_col:
+            from components.header import render_kingdom_cards
+            render_kingdom_cards(gs, tc, MT)
+
             total_claimed = sum(1 for c in gs["grid"] if c)
             unclaimed = 30 - total_claimed
             st.markdown(f"""
