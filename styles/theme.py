@@ -26,8 +26,17 @@ _CSS = """
 [data-baseweb="tab-list"] { display: none !important; }
 [data-testid="stHeader"] { background: transparent !important; height: 0 !important; min-height: 0 !important; overflow: visible !important; }
 [data-testid="stToolbar"] { display: none !important; }
-[data-testid="collapsedControl"] { display: none !important; }
-[data-testid="stSidebarCollapseButton"] { display: none !important; }
+[data-testid="collapsedControl"],
+[data-testid="stSidebarCollapseButton"],
+button[kind="headerNoPadding"],
+[aria-label="Collapse sidebar"],
+button[title="Collapse sidebar"] {
+    display: none !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    visibility: hidden !important;
+    width: 0 !important;
+}
 
 .block-container { padding: 1rem 1rem 3rem !important; max-width:1700px !important; }
 ::-webkit-scrollbar { width:3px; height:3px; }

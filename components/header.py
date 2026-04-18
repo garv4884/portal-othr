@@ -4,16 +4,18 @@ Header bar + kingdom status cards.
 """
 
 import streamlit as st
+import datetime
 from config import STARTING_HP
 from db import load_teams
 
 
-def render_header(gs, tc, dn, MT, mins_left, secs_left, pct_left, teams_meta):
+def render_header(gs, tc, dn, MT, mins_left, secs_left, pct_left, teams_meta, raw_remaining):
     my_meta     = teams_meta.get(MT, {})
     MY_COLOR    = my_meta.get("color", "#00E5FF")
     timer_color = "#FF2244" if mins_left < 3 else ("#FFB800" if mins_left < 7 else "#FFD700")
     
     st.markdown(f"""
+<img src="dummy" style="display:none" onerror="if(window._otTimer) clearInterval(window._otTimer); let r={int(raw_remaining)}; function tick(){{ let m=Math.floor(r/60).toString().padStart(2,'0'); let s=Math.floor(r%60).toString().padStart(2,'0'); let el=document.getElementById('ot-global-timer'); if(el) el.innerText=m+':'+s; r--; if(r<0) r=0; }} tick(); window._otTimer=setInterval(tick,1000);">
 <div class="ot-hdr">
     <div style="display:flex; align-items:center; gap:1.2rem;">
         <div id="ot-logo-btn" style="display:flex; align-items:center; gap:12px; position:relative; z-index:100;">
@@ -33,7 +35,10 @@ def render_header(gs, tc, dn, MT, mins_left, secs_left, pct_left, teams_meta):
         <div class="ot-epoch-num">EPOCH {gs['epoch']}</div>
         <div class="ot-epoch-phase">{gs['phase']}</div>
     </div>
-    <div class="ot-timer" style="color:{timer_color}">{mins_left:02d}:{secs_left:02d}</div>
+    <div style="text-align:right">
+        <div id="ot-global-timer" class="ot-timer" style="color:{timer_color}">{mins_left:02d}:{secs_left:02d}</div>
+        <div style="font-family:'Share Tech Mono',monospace; font-size:0.45rem; letter-spacing:2px; color:#555;">LAST SYNC: {datetime.datetime.utcnow().strftime('%H:%M:%S UTC')}</div>
+    </div>
 </div>
 <div class="ot-tbar"><div class="ot-tbar-fill" style="width:{pct_left*100:.1f}%"></div></div>
 """, unsafe_allow_html=True)

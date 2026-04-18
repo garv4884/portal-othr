@@ -178,7 +178,8 @@ def _init_state():
         "bots": {},
         "alliances": {},
         "alliance_reqs": {},
-        "queued_actions": {}
+        "queued_actions": {},
+        "ctf_solved": {}
     }
 
 def load_gs():

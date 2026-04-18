@@ -71,6 +71,8 @@ def show_war_room():
     try:
         epoch_end = datetime.fromisoformat(gs["epoch_end"])
         remaining = max(0.0, (epoch_end - datetime.utcnow()).total_seconds())
+        # Snap fractional ping latencies to pure factors of 10 for dashboard aesthetics
+        remaining -= (remaining % 10)
     except Exception:
         remaining = EPOCH_DURATION_SECS
 
@@ -97,7 +99,7 @@ def show_war_room():
 
     # ── SHARED COMPONENTS ────────────────────────────────────
     render_sidebar(gs, tc, dn, MT, my_hp, my_ap, my_terr, mins_left, secs_left, pct_left, redis_live, teams, users)
-    render_header(gs, tc, dn, MT, mins_left, secs_left, pct_left, teams)
+    render_header(gs, tc, dn, MT, mins_left, secs_left, pct_left, teams, remaining)
 
     # ── VICTORY CONDITION DISPLAY ────────────────────────────
     if gs.get("game_over"):
@@ -391,38 +393,59 @@ def show_war_room():
                 """, unsafe_allow_html=True)
 
     # ─────────────────────────────────────────────────────────────
-    # TASKS HUMAN
+    # TASKS HUMAN -> NOW CYBER COMMAND CTF
     # ─────────────────────────────────────────────────────────────
     elif active == "Tasks Human":
-        cd_end = st.session_state.cooldown.get(MT, 0)
-        cd_rem = max(0.0, cd_end - time.time())
-        if cd_rem > 0:
-            st.markdown(f'<div class="cd-bar">⏳ TASK COOLDOWN — {int(cd_rem//60):02d}:{int(cd_rem%60):02d} remaining</div>', unsafe_allow_html=True)
+        st.markdown('<div class="sec-lbl">🧠 CYBER COMMAND · CAPTURE THE FLAG</div>', unsafe_allow_html=True)
+        st.markdown("""
+        <div style="background:rgba(0, 229, 255, 0.05);border-left:2px solid #00E5FF;border-radius:2px;padding:8px 12px;margin-bottom:12px;font-family:'Share Tech Mono',monospace;font-size:0.75rem;color:#dde0ee;line-height:1.5;">
+            Resolve the target operations. Input the correct Flag (Case-Sensitive) to secure AP.<br>
+            Flags format: <code>HELIX{...}</code>. Points are granted once per kingdom.
+        </div>
+        """, unsafe_allow_html=True)
 
-        st.markdown('<div class="sec-lbl">🧠 HUMAN TASKS · MANUAL CLAIM</div>', unsafe_allow_html=True)
+        if "ctf_solved" not in gs:
+            gs["ctf_solved"] = {}
+
         tc_cols = st.columns(2, gap="small")
         for i, task in enumerate(TASKS["monarch"]):
-            dc = DIFF_COLOR[task["diff"]]
+            tid = task["id"]
+            dc = DIFF_COLOR.get(task.get("diff", "EASY"), "#00E5FF")
+            
+            solved_list = gs["ctf_solved"].get(tid, [])
+            is_solved = MT in solved_list
+            
             with tc_cols[i % 2]:
                 st.markdown(f"""
                 <div class="tc" style="border-top:2px solid {dc}44">
-                    <div class="tc-diff" style="background:{dc}18;color:{dc};border:1px solid {dc}44">{task['diff']}</div>
-                    <div class="tc-title">{task['title']}</div>
-                    <div class="tc-desc">{task['desc']}</div>
-                    <div class="tc-pts">+{task['pts']} AP</div>
+                    <div class="tc-diff" style="background:{dc}18;color:{dc};border:1px solid {dc}44">{task.get('diff', '')}</div>
+                    <div class="tc-title">{task.get('title', 'Unknown Operation')}</div>
+                    <div class="tc-desc">{task.get('desc', '')}</div>
+                    <a href="{task.get('link', '#')}" target="_blank" style="color:#00E5FF; text-decoration:none; font-family:'Share Tech Mono'; font-size:0.8rem; border-bottom:1px dashed #00E5FF; display:inline-block; margin-bottom:10px;">🔗 Launch Operation Tracker</a>
+                    <div class="tc-pts">+{task.get('pts', 0)} AP Reward</div>
                 </div>
                 """, unsafe_allow_html=True)
-                if st.button(f"CLAIM +{task['pts']}AP", key=f"task_{task['id']}", use_container_width=True, disabled=(cd_rem > 0)):
-                    if random.random() < 0.15:
-                        st.session_state.cooldown[MT] = time.time() + 900
-                        push_ev("TASK", f"Task FAILED — Team {MT} entering cooldown", MT)
-                        st.error("Failed! 15-min cooldown.")
-                    else:
-                        gs["ap"][MT] = int(gs["ap"].get(MT, 0)) + task["pts"]
-                        save_gs(gs)
-                        push_ev("TASK", f"Team {MT} completed '{task['title']}' +{task['pts']} AP", MT)
-                        st.success(f"+{task['pts']} AP earned!")
-                    st.rerun()
+                
+                if is_solved:
+                    st.markdown("""
+                    <div style="background:rgba(0,204,136,0.1); border:1px solid #00CC88; color:#00CC88; text-align:center; padding:5px; font-family:'Orbitron'; letter-spacing:2px; border-radius:3px;">
+                        ✅ OPERATION SECURED
+                    </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    flag_val = st.text_input("Flag Input", key=f"flag_in_{tid}", label_visibility="collapsed", placeholder="HELIX{...}")
+                    if st.button(f"VERIFY FLAG — {task.get('title')}", key=f"btn_flag_{tid}", use_container_width=True):
+                        if flag_val and flag_val == task.get("flag", ""):
+                            gs["ap"][MT] = int(gs["ap"].get(MT, 0)) + task.get("pts", 0)
+                            if tid not in gs["ctf_solved"]:
+                                gs["ctf_solved"][tid] = []
+                            gs["ctf_solved"][tid].append(MT)
+                            save_gs(gs)
+                            push_ev("TASK", f"Team {MT} cracked CTF '{task.get('title')}'! (+{task.get('pts')} AP)", MT)
+                            st.success("ACCESS GRANTED.")
+                            st.rerun()
+                        else:
+                            st.error("ACCESS DENIED. INVALID SIGNATURE.")
 
     # ─────────────────────────────────────────────────────────────
     # TASKS BOT (Code editor)

@@ -34,10 +34,10 @@ TERRAIN_SPECIAL = {15: "🪂", 44: "💊", 55: "🔫", 33: "🏥", 66: "💣"}
 
 TASKS = {
     "monarch": [
-        {"id":"m1","title":"Cipher of Seven Seals",    "diff":"EASY",   "pts":500,  "desc":"Decode a Caesar-13 shift applied to the royal decree."},
-        {"id":"m2","title":"The Merchant's Paradox",   "diff":"MEDIUM", "pts":750,  "desc":"Solve the riddle: which merchant owes the crown gold?"},
-        {"id":"m3","title":"Labyrinth of Mirrors",     "diff":"MEDIUM", "pts":750,  "desc":"Navigate the logic grid — only one path leads to the throne."},
-        {"id":"m4","title":"The Dragon's Number",      "diff":"HARD",   "pts":1000, "desc":"Find the prime p where p^2 - p + 41 is also prime, beyond p=40."},
+        {"id":"m1","title":"Cipher of Seven Seals",    "diff":"EASY",   "pts":500,  "desc":"Decode a Caesar-13 shift applied to the royal decree.", "link":"https://www.google.com/search?q=caesar+cipher", "flag":"HELIX{C4ES4R}"},
+        {"id":"m2","title":"The Merchant's Paradox",   "diff":"MEDIUM", "pts":750,  "desc":"Solve the riddle: which merchant owes the crown gold?", "link":"https://www.google.com/search?q=paradox", "flag":"HELIX{M3RCH4NT}"},
+        {"id":"m3","title":"Labyrinth of Mirrors",     "diff":"MEDIUM", "pts":750,  "desc":"Navigate the logic grid — only one path leads to the throne.", "link":"https://www.google.com/search?q=labyrinth", "flag":"HELIX{M1RR0R5}"},
+        {"id":"m4","title":"The Dragon's Number",      "diff":"HARD",   "pts":1000, "desc":"Find the prime p where p^2 - p + 41 is also prime, beyond p=40.", "link":"https://www.google.com/search?q=prime+math", "flag":"HELIX{PR1M3_41}"},
     ],
     "sovereign": [
         {"id":"s1","title":"API Backoff Optimizer",    "diff":"EASY",   "pts":500,  "desc":"Implement exponential backoff with jitter for HTTP retries.",
