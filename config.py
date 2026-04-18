@@ -40,14 +40,14 @@ TASKS = {
         {"id":"m4","title":"The Dragon's Number",      "diff":"HARD",   "pts":1000, "desc":"Find the prime p where p^2 - p + 41 is also prime, beyond p=40.", "link":"https://www.google.com/search?q=prime+math", "flag":"HELIX{PR1M3_41}"},
     ],
     "sovereign": [
-        {"id":"s1","title":"API Backoff Optimizer",    "diff":"EASY",   "pts":500,  "desc":"Implement exponential backoff with jitter for HTTP retries.",
-         "starter": "import time, random\n\ndef backoff_retry(max_retries=5):\n    for attempt in range(max_retries):\n        # Your code here\n        pass\n\nbackoff_retry()"},
-        {"id":"s2","title":"BFS Territory Scanner",    "diff":"MEDIUM", "pts":750,  "desc":"Write BFS to find all cells reachable within N moves on a 10x10 grid.",
-         "starter": "from collections import deque\n\ndef bfs_reachable(start, n, grid_size=10):\n    # Your BFS implementation here\n    visited = set()\n    queue = deque([(start, 0)])\n    # ...\n    return visited\n\nprint(bfs_reachable(0, 3))"},
-        {"id":"s3","title":"Territory Score Calc",     "diff":"MEDIUM", "pts":750,  "desc":"Write a function to compute team scores from a grid list.",
-         "starter": "def compute_scores(grid):\n    scores = {}\n    for cell in grid:\n        if cell:\n            scores[cell] = scores.get(cell, 0) + 1\n    return scores\n\ngrid = ['ALPHA','ALPHA','CRIMSON','',  'VERDANT']\nprint(compute_scores(grid))"},
-        {"id":"s4","title":"Sovereign Strategy Engine","diff":"HARD",   "pts":1000, "desc":"Code a greedy+lookahead function to maximize territory gain.",
-         "starter": "def best_attack(my_cells, enemy_grid):\n    # Greedy strategy: find most isolated enemy cell\n    # Return index of best cell to capture\n    pass\n\nprint(best_attack([0,1,10], ['CRIMSON']*100))"},
+        {"id":"s1","title":"Fibonacci Engine",    "diff":"EASY",   "pts":500,  "desc":"Write a function that computes and prints the 20th Fibonacci number (where F(0)=0, F(1)=1).",
+         "starter": "def fib(n):\n    # Your code here\n    pass\n\nprint(fib(20))", "verify": "6765"},
+        {"id":"s2","title":"Prime Factorization Engine",    "diff":"MEDIUM", "pts":750,  "desc":"Compute and print the largest prime factor of the number 315.",
+         "starter": "def largest_prime_factor(n):\n    # Your code here\n    pass\n\nprint(largest_prime_factor(315))", "verify": "7"},
+        {"id":"s3","title":"Territory Score Calc",     "diff":"MEDIUM", "pts":750,  "desc":"Compute a frequency dictionary for a map grid: ['A','A','C','','V','V','V']",
+         "starter": "def compute_scores(grid):\n    # Your code here\n    pass\n\ngrid = ['A','A','C','',  'V','V','V']\nprint(compute_scores(grid))", "verify": "{'A': 2, 'C': 1, 'V': 3}"},
+        {"id":"s4","title":"Sovereign Trajectory","diff":"HARD",   "pts":1000, "desc":"A bot starts at (0,0). Orders: 'UUDDLRLRBA'. U=(0,1), D=(0,-1), L=(-1,0), R=(1,0), others ignored. Print final (X,Y) as a tuple.",
+         "starter": "def trace_path(moves):\n    x,y = 0,0\n    # Your code here\n    pass\n\nprint(trace_path('UUDDLRLRBA'))", "verify": "(0, 0)"},
     ],
 }
 
@@ -63,7 +63,8 @@ def generate_amoeba_points(n=30, width=600, height=500):
     points = []
     phi = (1 + math.sqrt(5)) / 2
     for i in range(n):
-        r = 200 * math.sqrt((i + 0.5) / n)
+        # Phyllotaxis Spiral (matches D3 frontend logic)
+        r = 180 * math.sqrt((i + 0.5) / n)
         theta = 2 * math.pi * i / phi
         noiseX = math.sin(i * 123) * 15
         noiseY = math.cos(i * 321) * 15
@@ -72,7 +73,22 @@ def generate_amoeba_points(n=30, width=600, height=500):
         points.append((x, y))
     return points
 
-AMO_ADJ = {0: [1, 2, 3, 4, 5, 8], 1: [0, 3, 4, 6, 9], 2: [0, 4, 5, 7, 10, 15], 3: [0, 1, 6, 8, 11], 4: [0, 1, 2, 7, 9, 12, 17], 5: [0, 2, 8, 10, 13, 18], 6: [1, 3, 9, 11, 14, 19], 7: [2, 4, 12, 15, 20], 8: [0, 3, 5, 11, 13, 16, 21, 29], 9: [1, 4, 6, 14, 17, 22], 10: [2, 5, 15, 18, 23], 11: [3, 6, 8, 16, 19, 24], 12: [4, 7, 17, 20, 25], 13: [5, 8, 18, 21, 26], 14: [6, 9, 19, 22, 27], 15: [2, 7, 10, 20, 23, 28], 16: [8, 11, 24, 29], 17: [4, 9, 12, 22, 25], 18: [5, 10, 13, 23, 26], 19: [6, 11, 14, 24, 27], 20: [7, 12, 15, 25, 28], 21: [8, 13, 26, 29], 22: [9, 14, 17, 27], 23: [10, 15, 18, 26, 28], 24: [11, 16, 19, 27, 29], 25: [12, 17, 20], 26: [13, 18, 21, 23], 27: [14, 19, 22, 24], 28: [15, 20, 23], 29: [8, 16, 21, 24]}
-
 def get_amoeba_adjacency(n=30):
-    return {k: v for k, v in AMO_ADJ.items() if k < n}
+    """Dynamically generates a nearest-neighbor mesh for n points."""
+    points = generate_amoeba_points(n)
+    adj = {i: [] for i in range(n)}
+    
+    for i in range(n):
+        x1, y1 = points[i]
+        dists = []
+        for j in range(n):
+            if i == j: continue
+            x2, y2 = points[j]
+            dists.append((j, (x1-x2)**2 + (y1-y2)**2))
+        
+        # Connect to 6 nearest neighbors for a robust organic mesh
+        dists.sort(key=lambda x: x[1])
+        for neighbor_idx, _ in dists[:6]: 
+            adj[i].append(neighbor_idx)
+            
+    return adj

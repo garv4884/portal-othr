@@ -78,10 +78,10 @@ def render_sidebar(gs, tc, dn, MT, my_hp, my_ap, my_terr,
             </div>
             <div class="sb-row">
                 <span class="sb-lbl">TERRITORY</span>
-                <span class="sb-val" style="color:#D4AF37">{my_terr} / 100</span>
+                <span class="sb-val" style="color:#D4AF37">{my_terr} / {len(gs['grid'])}</span>
             </div>
             <div class="mini-bar">
-                <div class="mini-bar-f" style="width:{my_terr}%;background:linear-gradient(90deg,#D4AF37,#FFD700)"></div>
+                <div class="mini-bar-f" style="width:{(my_terr / max(1, len(gs['grid']))) * 100:.0f}%;background:linear-gradient(90deg,#D4AF37,#FFD700)"></div>
             </div>
         </div>
         """, unsafe_allow_html=True)

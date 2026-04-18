@@ -17,6 +17,10 @@ st.set_page_config(
 
 
 # ── Router ───────────────────────────────────────────────────
+from db import redis_live
+if not redis_live:
+    st.error("⚠️ SYSTEM DEGRADED: Redis connection failed. Portal is running on Mock state (Local Only). Data will NOT persist.")
+
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 

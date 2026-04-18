@@ -3,7 +3,7 @@ OVERTHRONE :: _pages/admin.py
 Game Master / Admin utility for resetting the database and resolving states.
 """
 import streamlit as st
-from db import R
+from db import R, check_admin_auth, load_gs, save_gs, simulate_epoch, acquire_epoch_lock, push_ev, load_teams
 from styles.theme import get_auth_css
 
 def show_admin_page():
@@ -26,19 +26,42 @@ def show_admin_page():
             with col2:
                 pwd = st.text_input("Enter Game Master Password", type="password", key="admin_pwd")
                 if st.button("AUTHENTICATE", use_container_width=True):
-                    if pwd == "overlord":
+                    ok, msg = check_admin_auth(pwd)
+                    if ok:
                         st.session_state.admin_unlocked = True
                         st.rerun()
                     else:
-                        st.error("ACCESS DENIED.")
+                        st.error(msg)
         return
 
     # ── ADMIN DASHBOARD ─────────────────────────────────────────
     st.markdown("### Command Center")
+    
+    # Show stats
+    gs = load_gs()
+    teams = load_teams()
+    st.markdown(f"""
+    <div style='background:rgba(255,255,255,0.03); padding:1rem; border-radius:10px; border:1px solid rgba(255,255,255,0.1)'>
+        <strong>System Metrics:</strong> Epoch {gs['epoch']} | Grid Size: {len(gs['grid'])} | Kingdoms: {len(teams)}
+    </div>
+    """, unsafe_allow_html=True)
+    
     st.warning("⚠️ Warning: These actions are irreversible.")
 
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
+        # ── Option C: Emergency Force Rollover ──────────────────
+        st.markdown("#### ⚡ Emergency Protocols")
+        if st.button("🚀 FORCE ADVANCE EPOCH (MANUAL ROLLOVER)", use_container_width=True):
+            if acquire_epoch_lock(gs["epoch"]):
+                simulate_epoch(gs)
+                push_ev("SYS", "ADMIN: Manual Epoch Advance triggered by Game Master.")
+                st.success(f"Epoch advanced to {gs['epoch'] + 1}")
+                st.rerun()
+            else:
+                st.error("Failed override: Epoch simulation is already in progress.")
+        
+        st.markdown("<hr>", unsafe_allow_html=True)
 
         # ── Option A: Reset Teams only (keep user accounts) ──────
         st.markdown("#### 🧹 Reset Teams Only")
@@ -72,6 +95,12 @@ def show_admin_page():
             st.success("DATABASE FLUSHED SUCCESSFULLY. Redirecting...")
             st.session_state.clear()
             st.query_params.clear()
+            st.rerun()
+
+        if st.button("RESET ADMIN LOCKOUTS & FAIL COUNTS", use_container_width=True):
+            R.delete("ot:admin_lockout")
+            R.delete("ot:admin_fail_count")
+            st.success("Security throttles reset.")
             st.rerun()
 
         st.markdown("<hr>", unsafe_allow_html=True)

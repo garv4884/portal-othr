@@ -1,11 +1,14 @@
-import json
+import streamlit as st
 import redis
+import html
+import time
+import re
+import json
 import hashlib
+import ast
 import sys
 import subprocess
 from datetime import datetime, timedelta
-import streamlit as st
-import redis
 
 # Import config constants
 try:
@@ -27,6 +30,9 @@ class MockRedis:
         if k not in self._lists: self._lists[k] = []
         for v in vals: self._lists[k].insert(0, v)
         return len(self._lists[k])
+    def ltrim(self, k, start, end):
+        if k in self._lists: self._lists[k] = self._lists[k][start:end+1]
+        return True
     def lrange(self, k, s, e):
         lst = self._lists.get(k, [])
         return lst[s: None if e == -1 else e + 1]
@@ -68,11 +74,17 @@ def save_users(users): R.set("ot:users", json.dumps(users))
 def get_user(username): return load_users().get(username)
 
 def register_user(username, password, display_name):
+    # Backend Safety: Strict length and sanitized
+    un = html.escape(username[:20].strip())
+    dn = html.escape(display_name[:20].strip())
+    if not re.match(r"^[a-zA-Z0-9 -]+$", un) or not re.match(r"^[a-zA-Z0-9 -]+$", dn):
+        return False, "Names must be alphanumeric/spaces only."
+    
     users = load_users()
-    if username in users: return False, "Username exists."
-    users[username] = {
+    if un in users: return False, "Username exists."
+    users[un] = {
         "pw_hash": hash_pw(password),
-        "display_name": display_name,
+        "display_name": dn,
         "team": None,
         "created": datetime.utcnow().isoformat()
     }
@@ -111,9 +123,14 @@ def create_team(tname, username, join_code=""):
     idx = len(teams) % len(TEAM_PALETTE)
     col = TEAM_PALETTE[idx]
     
+    # Backend Safety: Strict length and sanitized
+    tname = html.escape(tname[:20].strip())
+    if not re.match(r"^[a-zA-Z0-9 -]+$", tname):
+        return False, "Kingdom name must be alphanumeric/spaces only."
+    
     teams[tname] = {
         "creator": username,
-        "join_code": join_code,
+        "join_code": join_code[:20],
         "members": [username],
         "created": datetime.utcnow().isoformat(),
         "color": col["color"],
@@ -197,13 +214,31 @@ def reset_gs(): R.delete("ot:state")
 def acquire_epoch_lock(epoch_num):
     key = f"ot:epoch_lock_{epoch_num}"
     if R.setnx(key, "1"):
-        R.expire(key, 30)
+        R.expire(key, 90)
         return True
     return False
+
+def check_admin_auth(attempt_pw):
+    """Redis-backed rate limiting for Admin login"""
+    lock_key = "ot:admin_lockout"
+    if R.get(lock_key):
+        return False, "System is temporarily locked due to multiple failed attempts."
+    
+    if attempt_pw == "overlord":
+        R.delete("ot:admin_fail_count")
+        return True, "Authenticated"
+    
+    fails = int(R.get("ot:admin_fail_count") or 0) + 1
+    R.set("ot:admin_fail_count", str(fails), ex=3600)
+    if fails >= 5:
+        R.set(lock_key, "1", ex=300) # 5 min lockout
+        return False, "5/5 Failed attempts. Portal locked for 5 minutes."
+    return False, f"Invalid Credentials. ({fails}/5)"
 
 def push_ev(kind, msg, team=None):
     ev = {"ts": datetime.utcnow().strftime("%H:%M:%S"), "kind": kind, "msg": msg, "team": team}
     R.lpush("ot:events", json.dumps(ev))
+    R.ltrim("ot:events", 0, 199)
 
 def load_evs(limit=30):
     res = R.lrange("ot:events", 0, limit - 1)
@@ -223,11 +258,25 @@ def terr_count(grid, dict_teams=None):
         c[cell] += 1
     return c
 
+class SafeVisitor(ast.NodeVisitor):
+    def visit_Import(self, node): raise Exception("Imports are forbidden.")
+    def visit_ImportFrom(self, node): raise Exception("Imports are forbidden.")
+    def visit_Call(self, node):
+        if isinstance(node.func, ast.Name):
+            if node.func.id in ['eval', 'exec', 'compile', 'open', '__import__', 'getattr', 'setattr', 'delattr', 'input', 'breakpoint', 'dir', 'vars', 'locals', 'globals', 'help']:
+                raise Exception(f"Function '{node.func.id}' is forbidden.")
+        self.generic_visit(node)
+    def visit_Attribute(self, node):
+        if node.attr.startswith('__'): raise Exception("Private attribute access is forbidden.")
+        self.generic_visit(node)
+
 def run_code_safe(code: str, timeout: int = 5) -> tuple[str, str]:
-    blocked = ["import os", "import sys", "import subprocess", "open(", "__import__",
-               "exec(", "eval(", "compile(", "os.system", "os.popen", "shutil"]
-    for b in blocked:
-        if b in code: return "", f"[SECURITY] Blocked: '{b}'"
+    try:
+        tree = ast.parse(code)
+        SafeVisitor().visit(tree)
+    except Exception as e:
+        return "", f"[SECURITY] {str(e)}"
+    
     try:
         res = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=timeout)
         return res.stdout[:3000], res.stderr[:1000]
@@ -250,9 +299,10 @@ def execute_bot(code_str, MT, target_gs, teams_dict):
     valid_targets = set()
     for c in my_cells:
         for n in adj.get(c, []):
-            owner = grid[n]
-            if owner != MT and owner not in alliances:
-                valid_targets.add(n)
+            if n < len(grid):
+                owner = grid[n]
+                if owner != MT and owner not in alliances:
+                    valid_targets.add(n)
                 
     targets_data = []
     for c in valid_targets:
@@ -286,7 +336,7 @@ except Exception as e:
 if best_id is not None:
     print(f"__SYS_BOT_MOVE__ {{best_id}}")
 """
-    stdout, stderr = run_code_safe(injected_code, timeout=2)
+    stdout, stderr = run_code_safe(injected_code, timeout=0.8)
     return stdout.strip(), stderr.strip()
 
 
@@ -307,6 +357,10 @@ def simulate_epoch(gs):
     queued = gs.get("queued_actions", {})
     gs["queued_actions"] = {}
     
+    # 0. Global Economy: Passive AP Regen
+    for t in teams:
+        gs["ap"][t] = int(gs["ap"].get(t, 0)) + 100
+
     # 1. Resolve Suspicions
     for actor, action in list(queued.items()):
         if action["action"] == "SUSPICION":
@@ -342,13 +396,25 @@ def simulate_epoch(gs):
                     token_part = stdout.split("__SYS_BOT_MOVE__")[1].strip()
                     cell_idx = int(token_part.split()[0])
                     ap = int(gs["ap"].get(tname, 0))
-                    if ap >= ATTACK_COST_AP and gs["grid"][cell_idx] != tname:
+                    
+                    # ── VERIFY ADJACENCY (PREVENT BOT SPOOF TELEPORT) ──
+                    from config import get_amoeba_adjacency
+                    alliances = gs.get("alliances", {}).get(tname, [])
+                    adj = get_amoeba_adjacency(len(gs["grid"]))
+                    my_cells = [i for i, owner in enumerate(gs["grid"]) if owner == tname]
+                    valid_targets = set()
+                    for c in my_cells:
+                        valid_targets.update([n for n in adj.get(c, []) if n < len(gs["grid"]) and gs["grid"][n] != tname and gs["grid"][n] not in alliances])
+
+                    if ap >= ATTACK_COST_AP and cell_idx in valid_targets:
                         prev = gs["grid"][cell_idx]
                         gs["grid"][cell_idx] = tname
                         gs["ap"][tname] -= ATTACK_COST_AP
                         if prev and prev in gs["hp"]:
                             gs["hp"][prev] = max(0, int(gs["hp"][prev]) - 100)
                         push_ev("ATTACK", f"BOT ({tname}) captured cell {cell_idx}!", tname)
+                    else:
+                        push_ev("SYS", f"BOT ({tname}) attempted invalid/teleport targeting.", tname)
                 except:
                     push_ev("SYS", f"BOT ({tname}) execution failed to parse attack move", tname)
                     
@@ -361,7 +427,7 @@ def simulate_epoch(gs):
                     
     # 5. Victory Assessment
     living = [t for t, hp in gs["hp"].items() if hp > 0]
-    if gs["epoch"] > 1 and len(gs["hp"]) > 1:
+    if gs["epoch"] > 1 and len(teams) > 1:
         if len(living) == 1:
             gs["game_over"] = living[0]
         elif len(living) == 0:

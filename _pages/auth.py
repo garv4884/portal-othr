@@ -1,5 +1,5 @@
-"""OVERTHRONE :: _pages/auth.py"""
 import streamlit as st
+import html
 from db import login_user, register_user
 from styles.theme import get_auth_css
 
@@ -58,14 +58,12 @@ def _register():
     pw2 = st.text_input("Confirm",      key="reg_c",  type="password", placeholder="repeat")
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
     if st.button("Create Account", use_container_width=True):
-        if not all([dn, un, pw, pw2]):
-            st.warning("Fill in all fields.")
-        elif pw != pw2:
-            st.error("Passwords don't match.")
-        elif len(pw) < 6:
-            st.error("Password must be ≥ 6 characters.")
+        elif len(un) > 20 or len(dn) > 20:
+            st.error("Name fields must be <= 20 characters.")
         else:
-            ok, msg = register_user(un, pw, dn)
+            dn_safe = html.escape(dn.strip())
+            un_safe = html.escape(un.strip())
+            ok, msg = register_user(un_safe, pw, dn_safe)
             if ok:
                 st.success(f"{msg} — sign in to continue.")
             else:

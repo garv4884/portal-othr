@@ -3,6 +3,7 @@ OVERTHRONE :: _pages/team_select.py
 Dynamic team creation — players create teams with custom names.
 """
 import streamlit as st
+import html
 from db import get_user, load_teams, create_team, join_team, push_ev
 from styles.theme import get_auth_css
 
@@ -31,13 +32,17 @@ def show_team_page():
         new_pass = st.text_input("Vault Password", type="password", key="new_team_pass")
         if st.button("Create Kingdom", use_container_width=True, key="create_team_btn"):
             if new_name.strip() and new_pass.strip():
-                ok, msg = create_team(new_name.strip(), username, new_pass.strip())
-                if ok:
-                    push_ev("SYS", f'Kingdom "{new_name}" was founded by {dn}')
-                    st.session_state.user_data = get_user(username)
-                    st.rerun()
+                if len(new_name.strip()) > 20:
+                    st.error("Kingdom name must be <= 20 characters.")
                 else:
-                    st.error(msg)
+                    name_safe = html.escape(new_name.strip())
+                    ok, msg = create_team(name_safe, username, new_pass.strip())
+                    if ok:
+                        push_ev("SYS", f'Kingdom "{name_safe}" was founded by {dn}')
+                        st.session_state.user_data = get_user(username)
+                        st.rerun()
+                    else:
+                        st.error(msg)
             else:
                 st.warning("Enter a valid kingdom name and password.")
 

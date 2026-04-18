@@ -37,16 +37,8 @@ def show_war_room():
     # ── Inject Theme ─────────────────────────────────────────
     st.markdown(get_full_css(), unsafe_allow_html=True)
 
-    # ── Dynamic Auto-Refresh Timer Sync ──────────────────────
-    if "clock_sync" not in st.session_state:
-        # Calculate exactly how many milliseconds remain until the next UTC 10-second boundary
-        now = datetime.utcnow().timestamp()
-        ms_until_10s = int((10.0 - (now % 10.0)) * 1000)
-        st.session_state.clock_sync = True
-        st_autorefresh(interval=ms_until_10s, limit=1, key="ot_sync_refresh")
-    else:
-        # Now permanently aligned to the 10-second global tick
-        st_autorefresh(interval=10000, limit=None, key="ot_std_refresh")
+    # ── Auto-Refresh Timer (Ticks every 30s) ─────────────────
+    st_autorefresh(interval=30000, limit=None, key="ot_refresh")
     
     username = st.session_state.username
     users    = load_users()
@@ -142,10 +134,12 @@ def show_war_room():
         col1, col2, col3 = st.columns([1,2,1])
         with col2:
             if st.button("🃏 PLAY ATTACK CARD (Bypass Bot) -150 AP", use_container_width=True):
-                # Apply penalty
-                gs["ap"][MT] = max(0, int(gs["ap"].get(MT, 0)) - 150)
-                gs["bypassed"][MT] = True
-                save_gs(gs)
+                # Apply penalty with JIT Lock
+                fresh_gs = load_gs()
+                fresh_gs["ap"][MT] = max(0, int(fresh_gs["ap"].get(MT, 0)) - 150)
+                if "bypassed" not in fresh_gs: fresh_gs["bypassed"] = {}
+                fresh_gs["bypassed"][MT] = True
+                save_gs(fresh_gs)
                 push_ev("SYS", f"Team {MT} utilized manual override override (-150 AP)", MT)
                 st.rerun()
 
@@ -371,10 +365,11 @@ def show_war_room():
 
         with right_col:
             st.markdown('<div class="sec-lbl">COMMS FEED · LIVE</div>', unsafe_allow_html=True)
-            feed_html = '<div class="ev-feed">'
-            for ev in evs[:22]:
+            # Final Polish: Scrollable expanded feed for high-concurrency event
+            feed_html = '<div class="ev-feed" style="max-height:400px; overflow-y:auto; padding-right:5px;">'
+            for ev in evs[:50]:
                 bc = EVENT_COLORS.get(ev.get("kind","SYS"), "#333355")
-                feed_html += f'<div class="ev-item" style="border-left-color:{bc}"><span class="ev-ts">{ev.get("ts","--:--:--")}</span><span class="ev-msg">{ev.get("msg","")}</span></div>'
+                feed_html += f'<div class="ev-item" style="border-left-color:{bc}; margin-bottom:4px; padding:4px 8px;"><span class="ev-ts" style="font-size:0.6rem; opacity:0.6;">{ev.get("ts","--:--:--")}</span><span class="ev-msg" style="font-size:0.75rem;">{ev.get("msg","")}</span></div>'
             feed_html += '</div>'
             st.markdown(feed_html, unsafe_allow_html=True)
             
@@ -435,14 +430,20 @@ def show_war_room():
                 else:
                     flag_val = st.text_input("Flag Input", key=f"flag_in_{tid}", label_visibility="collapsed", placeholder="HELIX{...}")
                     if st.button(f"VERIFY FLAG — {task.get('title')}", key=f"btn_flag_{tid}", use_container_width=True):
-                        if flag_val and flag_val == task.get("flag", ""):
-                            gs["ap"][MT] = int(gs["ap"].get(MT, 0)) + task.get("pts", 0)
-                            if tid not in gs["ctf_solved"]:
-                                gs["ctf_solved"][tid] = []
-                            gs["ctf_solved"][tid].append(MT)
-                            save_gs(gs)
-                            push_ev("TASK", f"Team {MT} cracked CTF '{task.get('title')}'! (+{task.get('pts')} AP)", MT)
-                            st.success("ACCESS GRANTED.")
+                        # Final Polish: Case-insensitive and trimmed flag verification
+                        if flag_val and flag_val.strip().upper() == task.get("flag", "").upper():
+                            fresh_gs = load_gs()
+                            if "ctf_solved" not in fresh_gs: fresh_gs["ctf_solved"] = {}
+                            if tid not in fresh_gs["ctf_solved"]: fresh_gs["ctf_solved"][tid] = []
+                            
+                            if MT not in fresh_gs["ctf_solved"][tid]:
+                                fresh_gs["ap"][MT] = int(fresh_gs["ap"].get(MT, 0)) + task.get("pts", 0)
+                                fresh_gs["ctf_solved"][tid].append(MT)
+                                save_gs(fresh_gs)
+                                push_ev("TASK", f"Team {MT} cracked CTF '{task.get('title')}'! (+{task.get('pts')} AP)", MT)
+                                st.success("ACCESS GRANTED.")
+                            else:
+                                st.info("Flag already claimed.")
                             st.rerun()
                         else:
                             st.error("ACCESS DENIED. INVALID SIGNATURE.")
@@ -484,10 +485,23 @@ def show_war_room():
             st.session_state.code_outputs[out_key] = {"stdout":so, "stderr":se, "ts": datetime.utcnow().strftime("%H:%M:%S")}
             if not se:
                 task_obj = next(t for t in TASKS["sovereign"] if t["id"] == sel_id)
-                gs["ap"][MT] = int(gs["ap"].get(MT, 0)) + task_obj["pts"]
-                save_gs(gs)
-                push_ev("TASK", f"Team {MT} completed bot challenge '{task_obj['title']}'", MT)
-                st.success("Accepted! AP awarded.")
+                verify_token = task_obj.get("verify", "XYZZZZ999")
+                
+                if verify_token in so:
+                    fresh_gs = load_gs()
+                    if "ctf_solved" not in fresh_gs: fresh_gs["ctf_solved"] = {}
+                    if sel_id not in fresh_gs["ctf_solved"]: fresh_gs["ctf_solved"][sel_id] = []
+                    
+                    if MT not in fresh_gs["ctf_solved"][sel_id]:
+                        fresh_gs["ap"][MT] = int(fresh_gs["ap"].get(MT, 0)) + task_obj["pts"]
+                        fresh_gs["ctf_solved"][sel_id].append(MT)
+                        save_gs(fresh_gs)
+                        push_ev("TASK", f"Team {MT} completed bot challenge '{task_obj['title']}'", MT)
+                        st.success("Accepted! AP awarded.")
+                    else:
+                        st.info("Challenge already passed. No additional AP awarded.")
+                else:
+                    st.error("Execution succeeded, but output does not match expected result.")
             else:
                 st.error("Errors detected.")
 
@@ -538,8 +552,13 @@ def show_war_room():
         c_code = st.text_area("Bot Code", value=db_code, height=280, key="decision_bot_editor", label_visibility="collapsed")
         
         if c_code != db_code:
-            gs["bots"][MT] = c_code
-            save_gs(gs)
+            if len(c_code) > 8192:
+                st.warning("Subroutine limit exceeded (Max 8KB). Optimization required.")
+            else:
+                fresh_gs = load_gs()
+                if "bots" not in fresh_gs: fresh_gs["bots"] = {}
+                fresh_gs["bots"][MT] = c_code
+                save_gs(fresh_gs)
         
         col_test, col_man = st.columns(2)
         with col_test:
@@ -560,25 +579,31 @@ def show_war_room():
         with col_man:
             if gs.get("bypassed", {}).get(MT):
                 st.markdown("<div style='text-align:center;padding:5px;font-family:Share Tech Mono;color:#00E5FF'>Bypass Active — Manual Mode Unlocked</div>", unsafe_allow_html=True)
-                target_cell = st.number_input("Target Cell (0-29)", 0, 29, 0)
+                # Final Polish: Scale attack input to global grid size
+                target_cell = st.number_input(f"Target Cell (0-{len(gs['grid'])-1})", 0, len(gs["grid"])-1, 0)
                 if st.button("🗡️ LAUNCH MANUAL ATTACK", use_container_width=True):
-                    ap = int(gs["ap"].get(MT, 0))
+                    fresh_gs = load_gs()
+                    ap = int(fresh_gs["ap"].get(MT, 0))
                     
-                    adj = get_amoeba_adjacency(len(gs["grid"]))
-                    my_cells = [i for i, owner in enumerate(gs["grid"]) if owner == MT]
+                    adj = get_amoeba_adjacency(len(fresh_gs["grid"]))
+                    my_cells = [i for i, owner in enumerate(fresh_gs["grid"]) if owner == MT]
                     valid_targets = set()
                     for c in my_cells:
-                        valid_targets.update(adj.get(c, []))
+                        valid_targets.update([n for n in adj.get(c, []) if n < len(fresh_gs["grid"])])
                         
-                    if ap >= ATTACK_COST_AP and target_cell in valid_targets and gs["grid"][target_cell] != MT:
-                        prev = gs["grid"][target_cell]
-                        gs["grid"][target_cell] = MT
-                        gs["ap"][MT] -= ATTACK_COST_AP
-                        if prev and prev in gs["hp"]:
-                            gs["hp"][prev] = max(0, int(gs["hp"][prev]) - 100)
-                        save_gs(gs)
-                        push_ev("ATTACK", f"MANUAL ({MT}) captured cell {target_cell}!", MT)
-                        st.success(f"Captured {target_cell}!")
+                    if ap >= ATTACK_COST_AP and target_cell in valid_targets and fresh_gs["grid"][target_cell] != MT:
+                        prev = fresh_gs["grid"][target_cell]
+                        alliances = fresh_gs.get("alliances", {}).get(MT, [])
+                        if prev and prev in alliances:
+                            st.error("Protocol violation: Cannot manually bombard an Ally.")
+                        else:
+                            fresh_gs["grid"][target_cell] = MT
+                            fresh_gs["ap"][MT] -= ATTACK_COST_AP
+                            if prev and prev in fresh_gs["hp"]:
+                                fresh_gs["hp"][prev] = max(0, int(fresh_gs["hp"][prev]) - 100)
+                            save_gs(fresh_gs)
+                            push_ev("ATTACK", f"MANUAL ({MT}) captured cell {target_cell}!", MT)
+                            st.success(f"Captured {target_cell}!")
                     else:
                         st.error("Invalid Target or Insufficient AP.")
 
@@ -607,11 +632,12 @@ def show_war_room():
             non_allies = [t for t in all_teams if t not in alliances]
             t_ally = st.selectbox("Offer Alliance to:", ["--"] + non_allies, key="ally_sel", label_visibility="collapsed")
             if st.button("SEND ALLIANCE REQUEST", use_container_width=True) and t_ally != "--":
-                if "alliance_reqs" not in gs: gs["alliance_reqs"] = {}
-                if t_ally not in gs["alliance_reqs"]: gs["alliance_reqs"][t_ally] = []
-                if MT not in gs["alliance_reqs"][t_ally]:
-                    gs["alliance_reqs"][t_ally].append(MT)
-                    save_gs(gs)
+                fresh_gs = load_gs()
+                if "alliance_reqs" not in fresh_gs: fresh_gs["alliance_reqs"] = {}
+                if t_ally not in fresh_gs["alliance_reqs"]: fresh_gs["alliance_reqs"][t_ally] = []
+                if MT not in fresh_gs["alliance_reqs"][t_ally]:
+                    fresh_gs["alliance_reqs"][t_ally].append(MT)
+                    save_gs(fresh_gs)
                     push_ev("SYS", f"Team {MT} offered an alliance to {t_ally}.", MT)
                     st.success("Request Sent!")
             
@@ -620,15 +646,17 @@ def show_war_room():
                 for req_team in ally_reqs:
                     if st.button(f"ACCEPT {req_team}", key=f"acc_{req_team}", use_container_width=True):
                         # Make mutual
-                        if "alliances" not in gs: gs["alliances"] = {}
-                        if MT not in gs["alliances"]: gs["alliances"][MT] = []
-                        if req_team not in gs["alliances"]: gs["alliances"][req_team] = []
+                        fresh_gs = load_gs()
+                        if "alliances" not in fresh_gs: fresh_gs["alliances"] = {}
+                        if MT not in fresh_gs["alliances"]: fresh_gs["alliances"][MT] = []
+                        if req_team not in fresh_gs["alliances"]: fresh_gs["alliances"][req_team] = []
                         
-                        gs["alliances"][MT].append(req_team)
-                        gs["alliances"][req_team].append(MT)
+                        if req_team not in fresh_gs["alliances"][MT]: fresh_gs["alliances"][MT].append(req_team)
+                        if MT not in fresh_gs["alliances"][req_team]: fresh_gs["alliances"][req_team].append(MT)
                         
-                        gs["alliance_reqs"][MT].remove(req_team)
-                        save_gs(gs)
+                        if req_team in fresh_gs.get("alliance_reqs", {}).get(MT, []):
+                            fresh_gs["alliance_reqs"][MT].remove(req_team)
+                        save_gs(fresh_gs)
                         push_ev("SYS", f"Team {MT} and {req_team} forged an Alliance!", MT)
                         st.rerun()
             st.markdown("</div>", unsafe_allow_html=True)
@@ -646,16 +674,19 @@ def show_war_room():
             else:
                 t_bs = st.selectbox("Target Ally:", ["--"] + alliances, key="bs_sel", label_visibility="collapsed")
                 if st.button("QUEUE BACKSTAB", use_container_width=True) and t_bs != "--":
-                    if "queued_actions" not in gs: gs["queued_actions"] = {}
-                    gs["queued_actions"][MT] = {"action": "BACKSTAB", "target": t_bs}
-                    save_gs(gs)
+                    fresh_gs = load_gs()
+                    if "queued_actions" not in fresh_gs: fresh_gs["queued_actions"] = {}
+                    fresh_gs["queued_actions"][MT] = {"action": "BACKSTAB", "target": t_bs}
+                    save_gs(fresh_gs)
                     st.success("Backstab Queued!")
 
             if my_queued and my_queued["action"] == "BACKSTAB":
                 st.warning(f"Queued secretly vs: {my_queued['target']}")
                 if st.button("Cancel Queue", key="c_bs"):
-                    gs["queued_actions"].pop(MT)
-                    save_gs(gs)
+                    fresh_gs = load_gs()
+                    if MT in fresh_gs.get("queued_actions", {}):
+                        fresh_gs["queued_actions"].pop(MT)
+                        save_gs(fresh_gs)
                     st.rerun()
             st.markdown("</div>", unsafe_allow_html=True)
 
@@ -672,16 +703,19 @@ def show_war_room():
             else:
                 t_susp = st.selectbox("Suspect Ally:", ["--"] + alliances, key="susp_sel", label_visibility="collapsed")
                 if st.button("QUEUE SUSPICION", use_container_width=True) and t_susp != "--":
-                    if "queued_actions" not in gs: gs["queued_actions"] = {}
-                    gs["queued_actions"][MT] = {"action": "SUSPICION", "target": t_susp}
-                    save_gs(gs)
+                    fresh_gs = load_gs()
+                    if "queued_actions" not in fresh_gs: fresh_gs["queued_actions"] = {}
+                    fresh_gs["queued_actions"][MT] = {"action": "SUSPICION", "target": t_susp}
+                    save_gs(fresh_gs)
                     st.success("Suspicion Queued!")
 
             if my_queued and my_queued["action"] == "SUSPICION":
                 st.warning(f"Queued vs: {my_queued['target']}")
                 if st.button("Cancel Queue", key="c_susp"):
-                    gs["queued_actions"].pop(MT)
-                    save_gs(gs)
+                    fresh_gs = load_gs()
+                    if MT in fresh_gs.get("queued_actions", {}):
+                        fresh_gs["queued_actions"].pop(MT)
+                        save_gs(fresh_gs)
                     st.rerun()
             st.markdown("</div>", unsafe_allow_html=True)
 

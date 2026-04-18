@@ -15,7 +15,7 @@ def render_header(gs, tc, dn, MT, mins_left, secs_left, pct_left, teams_meta, ra
     timer_color = "#FF2244" if mins_left < 3 else ("#FFB800" if mins_left < 7 else "#FFD700")
     
     st.markdown(f"""
-<img src="dummy" style="display:none" onerror="if(window._otTimer) clearInterval(window._otTimer); let r={int(raw_remaining)}; function tick(){{ let m=Math.floor(r/60).toString().padStart(2,'0'); let s=Math.floor(r%60).toString().padStart(2,'0'); let el=document.getElementById('ot-global-timer'); if(el) el.innerText=m+':'+s; r--; if(r<0) r=0; }} tick(); window._otTimer=setInterval(tick,1000);">
+<img src="fake_clock_{int(raw_remaining)}.jpg" style="display:none" onerror="if(window._otTimer) clearInterval(window._otTimer); let r={int(raw_remaining)}; function tick(){{ let el=document.getElementById('ot-global-timer'); if(el){{ let m=Math.floor(r/60).toString().padStart(2,'0'); let s=Math.floor(r%60).toString().padStart(2,'0'); el.innerText=m+':'+s; }} r--; if(r<0) r=0; }} tick(); window._otTimer=setInterval(tick,1000);">
 <div class="ot-hdr">
     <div style="display:flex; align-items:center; gap:1.2rem;">
         <div id="ot-logo-btn" style="display:flex; align-items:center; gap:12px; position:relative; z-index:100;">
@@ -88,7 +88,7 @@ def render_kingdom_cards(gs, tc, MT, teams_meta):
                     <div>
                         <div class="kcard-sl">CELLS</div>
                         <div class="kcard-sv" style="color:#D4AF37">{terr}</div>
-                        <div class="kcard-sl" style="font-size:0.4rem">/100</div>
+                        <div class="kcard-sl" style="font-size:0.4rem">/{len(gs["grid"])}</div>
                     </div>
                 </div>
             </div>
