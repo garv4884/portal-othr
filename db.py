@@ -127,9 +127,8 @@ def create_team(tname, username, join_code=""):
         gs["hp"][tname] = STARTING_HP
         gs["ap"][tname] = STARTING_AP
         
-        # Modular Map: scale grid size based on active kingdoms (10 per team, min 30)
-        target_cells = max(30, len(teams) * 10)
-        while len(gs["grid"]) < target_cells:
+        # Expand the world map by exactly 1 region per entering kingdom
+        while len(gs["grid"]) < len(teams):
             gs["grid"].append("")
             
         # Assign random available cell
@@ -163,7 +162,7 @@ def join_team(tname, username, join_code=""):
 
 # ── GAME STATE (GRID) ───────────────────────────────────────────
 def _init_state():
-    grid = [""] * 30
+    grid = []
     return {
         "grid": grid,
         "hp":   {},

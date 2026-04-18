@@ -26,14 +26,8 @@ _CSS = """
 [data-baseweb="tab-list"] { display: none !important; }
 [data-testid="stHeader"] { background: transparent !important; height: 0 !important; min-height: 0 !important; overflow: visible !important; }
 [data-testid="stToolbar"] { display: none !important; }
-[data-testid="collapsedControl"] {
-    display: flex !important; z-index: 9999 !important;
-    background: rgba(212,175,55,0.15) !important;
-    border: 1px solid rgba(212,175,55,0.4) !important;
-    border-radius: 4px !important; color: #D4AF37 !important;
-    position: fixed !important; top: 12px !important; left: 8px !important;
-}
-[data-testid="collapsedControl"]:hover { background: rgba(212,175,55,0.3) !important; }
+[data-testid="collapsedControl"] { display: none !important; }
+[data-testid="stSidebarCollapseButton"] { display: none !important; }
 
 .block-container { padding: 1rem 1rem 3rem !important; max-width:1700px !important; }
 ::-webkit-scrollbar { width:3px; height:3px; }

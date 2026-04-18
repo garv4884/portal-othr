@@ -58,6 +58,8 @@ def show_war_room():
     try:
         epoch_end = datetime.fromisoformat(gs["epoch_end"])
         remaining = max(0.0, (epoch_end - datetime.utcnow()).total_seconds())
+        # Quantize to strictly 10-second boundaries so all clients see uniform numbers
+        remaining -= (remaining % 10)
     except Exception:
         remaining = EPOCH_DURATION_SECS
 
@@ -236,7 +238,8 @@ def show_war_room():
                     .attr("style", "width:100%; height:100%; display:block; padding: 10px;");
                 
                 const data = {grid_json};
-                const n = data.length;
+                // D3 Voronoi requires at least 3 nodes mathematically. We peg it to 7 to maintain the organic amoeba aesthetic at start.
+                const n = Math.max(7, data.length);
                 const points = [];
                 const phi = (1 + Math.sqrt(5)) / 2;
                 for(let i=0; i<n; i++) {{
@@ -249,7 +252,8 @@ def show_war_room():
                 
                 const delaunay = d3.Delaunay.from(points);
                 const voronoi = delaunay.voronoi([0, 0, width, height]);
-                const pData = points.map((p, i) => ({{p: p, i: i}}));
+                // Safely map points, preventing null errors if geometry array exceeds actual database array
+                const pData = points.map((p, i) => ({{p: p, i: i, owner: i < data.length ? data[i] : ""}}));
                 const backgrounds = {team_colors_json};
                 const strokes = {team_strokes_json};
                 const meta = {metadata_json};

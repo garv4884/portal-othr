@@ -18,9 +18,8 @@ def render_sidebar(gs, tc, dn, MT, my_hp, my_ap, my_terr,
 
     with st.sidebar:
         st.markdown("""
-        <img src="dummy" style="display:none;" onerror="if(!window._otTgl){{window._otTgl=1;document.addEventListener('click',e=>{{let c=e.target;while(c&&c!==document.body){{if(c.id==='ot-logo-btn'||c.id==='sticky-sidebar-toggle'){{e.preventDefault();e.stopPropagation();let o=document.querySelector('[data-testid=\\'collapsedControl\\']');let x=document.querySelector('[data-testid=\\'stSidebarCollapseButton\\']');if(x&&window.getComputedStyle(x).display!=='none')x.dispatchEvent(new MouseEvent('click',{{bubbles:true,cancelable:true}}));else if(o)o.dispatchEvent(new MouseEvent('click',{{bubbles:true,cancelable:true}}));return;}}c=c.parentElement;}}}},true);}}">
         <div class="sb-head">
-            <div id="ot-logo-btn" style="cursor:pointer; display:flex; align-items:center; gap:12px;" title="Toggle Sidebar">
+            <div id="ot-logo-btn" style="display:flex; align-items:center; gap:12px;">
                 <div style="font-size:1.2rem; color:#D4AF37; filter:drop-shadow(0 0 5px #D4AF37);">☰</div>
                 <div style="font-family:'Orbitron',monospace;font-size:1.05rem;font-weight:900;
                     letter-spacing:5px;background:linear-gradient(135deg,#8a6010,#FFD700,#D4AF37);
