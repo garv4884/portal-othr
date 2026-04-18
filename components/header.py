@@ -49,7 +49,7 @@ def render_header(gs, tc, dn, MT, mins_left, secs_left, pct_left):
         }, true);
     })();
     </script>
-    """, height=0)
+    """, height=1)
 
     st.markdown(f"""
 <div class="ot-hdr">
