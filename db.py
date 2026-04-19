@@ -155,6 +155,27 @@ def save_users(users):
 def get_user(username):
 	return load_users().get(username)
 
+def register_user(username, password, display_name):
+	users = load_users()
+	if username in users:
+		return False, "Username exists."
+	users[username] = {
+		"pw_hash": hash_pw(password),
+		"display_name": display_name,
+		"team": None,
+		"created": datetime.utcnow().isoformat(),
+	}
+	save_users(users)
+	return True, "Account created"
+
+def login_user(username, password):
+	users = load_users()
+	if username not in users:
+		return False, "User not found."
+	if users[username]["pw_hash"] != hash_pw(password):
+		return False, "Wrong password."
+	return True, users[username]
+
 # -- TEAMS ---------------------------------------------------
 def load_teams():
 	raw = R.get("ot:teams_meta")
@@ -200,6 +221,27 @@ def create_team(tname, username, join_code=""):
 
 	return True, f"Kingdom {tname} established."
 
+def join_team(tname, username, join_code=""):
+	teams = load_teams()
+	users = load_users()
+	if tname not in teams:
+		return False, "Kingdom not found."
+	if str(teams[tname].get("join_code", "")) != str(join_code):
+		return False, "Incorrect Vault Password."
+	if username in teams[tname]["members"]:
+		return False, "Already joined."
+
+	old_team = users.get(username, {}).get("team")
+	if old_team and old_team in teams and username in teams[old_team]["members"]:
+		teams[old_team]["members"].remove(username)
+
+	teams[tname]["members"].append(username)
+	save_teams(teams)
+
+	users[username]["team"] = tname
+	save_users(users)
+	return True, f"Joined {tname}"
+
 # -- GAME STATE ----------------------------------------------
 def _init_state():
 	return {
@@ -228,6 +270,10 @@ def load_gs():
 
 def save_gs(state):
 	R.set("ot:state", json.dumps(state))
+
+def reset_gs():
+	R.delete("ot:state")
+	R.delete("ot:events")
 
 def push_ev(kind, msg, team=None):
 	event = {"ts": datetime.utcnow().strftime("%H:%M:%S"), "kind": kind, "msg": msg, "team": team}
