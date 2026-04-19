@@ -157,11 +157,11 @@ def render_d3_map(gs, teams, MT):
                     .style("font-size","8px")
                     .style("font-weight","bold")
                     .style("pointer-events","none")
-                    .text((d,i)=>{
+                    .text((d,i)=>{{
                         const owner = grid[i];
                         if(owner) return owner.substring(0,3).toUpperCase();
                         return i;
-                    });
+                    }});
                 
                 // Add unique glow to player's kingdom
                 g.selectAll("path")
@@ -223,10 +223,17 @@ def show_war_room():
 
         my_hp, my_ap = int(gs["hp"].get(MT, 0)), _visible_ap(gs, MT)
         my_terr = gs["grid"].count(MT)
+        hp_pct = max(0, min(100, (my_hp / STARTING_HP) * 100))
+        ap_pct = max(0, min(100, (my_ap / 2000) * 100))
+
         st.markdown('<div class="sb-title">BIOMETRICS · LIVE</div>', unsafe_allow_html=True)
         st.markdown(f'<div class="sb-row"><span class="sb-lbl">HEALTH</span><span class="sb-val" style="color:var(--red)">{my_hp:,} HP</span></div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="sb-row"><span class="sb-lbl">RESOURCES</span><span class="sb-val" style="color:var(--cyan)">{my_ap:,} AP</span></div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="sb-row"><span class="sb-lbl">AREA</span><span class="sb-val" style="color:var(--gold)">{my_terr} cells</span></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="mini-bar"><div class="mini-bar-f" style="width:{hp_pct}%; background:var(--red); box-shadow:0 0 10px var(--red)"></div></div>', unsafe_allow_html=True)
+        
+        st.markdown(f'<div class="sb-row" style="margin-top:0.8rem"><span class="sb-lbl">RESOURCES</span><span class="sb-val" style="color:var(--cyan)">{my_ap:,} AP</span></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="mini-bar"><div class="mini-bar-f" style="width:{ap_pct}%; background:var(--cyan); box-shadow:0 0 10px var(--cyan)"></div></div>', unsafe_allow_html=True)
+        
+        st.markdown(f'<div class="sb-row" style="margin-top:0.8rem"><span class="sb-lbl">AREA</span><span class="sb-val" style="color:var(--gold)">{my_terr} cells</span></div>', unsafe_allow_html=True)
 
         st.markdown('<div class="sb-title">CHRONOS SYNC</div>', unsafe_allow_html=True)
         st.markdown(f'<div class="sb-row"><span class="sb-lbl">EPOCH</span><span class="sb-val">{gs["epoch"]}</span></div>', unsafe_allow_html=True)
@@ -248,8 +255,6 @@ def show_war_room():
         """, unsafe_allow_html=True)
         return
 
-    # HEADER
-    st.markdown(f"""
     <div class="ot-hdr">
         <div><div class="ot-logo">OVERTHRONE</div><div class="ot-subtitle">HELIX x ISTE · KINGDOM SIMULATION</div></div>
         <div class="ot-epoch-box">
@@ -260,7 +265,34 @@ def show_war_room():
     <div class="ot-tbar"><div class="ot-tbar-fill" id="ot-live-bar" style="width:100%"></div></div>
     """, unsafe_allow_html=True)
     
-    _mount_live_timer_sync(gs)
+    # Live timer sync helper
+    components.html(f"""
+        <script>
+            const END_MS = Date.parse("{gs["epoch_end"]}");
+            const DURATION = {EPOCH_DURATION_SECS};
+            const parent = window.parent;
+            const doc = parent.document;
+
+            function tick() {{
+                const tMain = doc.getElementById('ot-live-timer');
+                const barVal = doc.getElementById('ot-live-bar');
+                if(!tMain || !barVal) return;
+
+                const rem = Math.max(0, Math.floor((END_MS - Date.now()) / 1000));
+                const m = String(Math.floor(rem/60)).padStart(2,'0');
+                const s = String(rem%60).padStart(2,'0');
+                const final = m + ":" + s;
+                
+                tMain.textContent = final;
+                
+                const pct = (rem / DURATION) * 100;
+                barVal.style.width = pct.toFixed(1) + "%";
+            }}
+            if(parent.__otTimer) clearInterval(parent.__otTimer);
+            tick();
+            parent.__otTimer = setInterval(tick, 1000);
+        </script>
+    """, height=0)
 
     # TABS
     tab_names = ["HOME", "TASKS (HUMAN)", "TASKS (BOT)", "STRATEGY DECK", "LEADERBOARD"]
