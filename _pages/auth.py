@@ -58,8 +58,12 @@ def _register():
     pw2 = st.text_input("Confirm",      key="reg_c",  type="password", placeholder="repeat")
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
     if st.button("Create Account", use_container_width=True):
+        if not un or not dn:
+            st.error("All fields are required.")
         elif len(un) > 20 or len(dn) > 20:
             st.error("Name fields must be <= 20 characters.")
+        elif pw != pw2:
+            st.error("Passwords do not match.")
         else:
             dn_safe = html.escape(dn.strip())
             un_safe = html.escape(un.strip())
