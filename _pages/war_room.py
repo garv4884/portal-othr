@@ -39,6 +39,8 @@ def show_war_room():
 
     # ── Auto-Refresh Disabled (Transitioned to Event-Driven Smart Ticker) ──
     # st_autorefresh is removed to allow manual and milestone-only syncing.
+    d3_map_html = ""
+    chronos_html = ""
     
     username = st.session_state.username
     users    = load_users()
@@ -716,7 +718,6 @@ def show_war_room():
 
     # ── GLOBAL CHRONOS SYNC ENGINE ───────────────────────────
     # Hidden component that synchronizes all clocks across the portal
-    import streamlit.components.v1 as components
     import random
     sync_seed = random.random()
     chronos_html = f"""
