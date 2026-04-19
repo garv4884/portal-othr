@@ -61,7 +61,14 @@ class InMemoryStore:
 @st.cache_resource
 def get_store():
 	try:
-		# Use Streamlit secrets for Redis config; fall back to local defaults
+		# Priority 1: Unified REDIS_URL (e.g., redis://...)
+		url = st.secrets.get("REDIS_URL", os.getenv("REDIS_URL"))
+		if url:
+			r = redis.from_url(url, decode_responses=True, socket_timeout=3)
+			r.ping()
+			return r, True
+
+		# Priority 2: Discrete fields (REDIS_HOST, etc.)
 		host = st.secrets.get("REDIS_HOST", "localhost")
 		port = int(st.secrets.get("REDIS_PORT", 6379))
 		password = st.secrets.get("REDIS_PASSWORD", None)
@@ -71,7 +78,7 @@ def get_store():
 			port=port, 
 			password=password, 
 			decode_responses=True,
-			socket_timeout=2
+			socket_timeout=3
 		)
 		r.ping()
 		return r, True
