@@ -7,6 +7,7 @@ FONTS = """@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@4
 
 _CSS = """
 *, *::before, *::after { box-sizing: border-box; }
+:root {
     --void:#03030a; --panel:#080813; --card:#0c0c1a; --gold:#D4AF37; --goldb:#FFD700;
     --cyan:#00E5FF; --red:#FF2244; --green:#00CC88; --purple:#CC44FF; --dim:#8890b8;
     --muted:#555a84; --text:#dde0ee; --bdim:rgba(255,255,255,0.05); --bgold:rgba(212,175,55,0.25);
