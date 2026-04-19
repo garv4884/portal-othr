@@ -69,7 +69,7 @@ def render_d3_map(gs, teams, MT):
     team_colors = json.dumps({k: v.get("bg", "#0a1a0e") for k,v in teams.items()})
     team_strokes = json.dumps({k: v.get("color", "#0099FF") for k,v in teams.items()})
     
-    meta_dict = {{}}
+    meta_dict = {}
     for t_id, t_data in teams.items():
         meta_dict[t_id] = {
             "hp": gs["hp"].get(t_id, 0),
@@ -269,7 +269,8 @@ def show_war_room():
             is_done = task["id"] in solved
             dc = DIFF_COLOR.get(task["diff"], "cyan")
             with cols[i % 2]:
-                st.markdown(f'<div class="tc" style="border-top:2px solid {dc}44"><div class="tc-title">{task["title"]}</div><div class="tc-desc">{task["desc"]}</div><div class="tc-pts">+{task["pts"]} AP</div></div>', unsafe_allow_html=True)
+                link_html = f'<div style="margin-top:10px;"><a href="{task["link"]}" target="_blank" style="color:var(--gold); text-decoration:none; font-size:0.75rem; border:1px solid var(--gold); padding:4px 10px; border-radius:4px;">📥 DOWNLOAD ATTACHMENT</a></div>' if "link" in task else ""
+                st.markdown(f'<div class="tc" style="border-top:2px solid {dc}44"><div class="tc-title">{task["title"]}</div><div class="tc-desc">{task["desc"]}</div>{link_html}<div class="tc-pts">+{task["pts"]} AP</div></div>', unsafe_allow_html=True)
                 if is_done: st.success("SECURED")
                 else:
                     ans = st.text_input(f"Signal for {task['id']}", key=f"ans_{task['id']}")
