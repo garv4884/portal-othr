@@ -22,21 +22,18 @@ _CSS = """
     font-family:'Rajdhani',sans-serif; color:var(--text) !important;
 }
 
-#MainMenu, footer, .stDeployButton { display: none !important; }
+#MainMenu, footer, .stDeployButton, [data-testid="stFooter"], [data-testid="stMainMenu"], [data-testid="stDecoration"] { display: none !important; }
 [data-baseweb="tab-list"] { display: none !important; }
 [data-testid="stHeader"] { background: transparent !important; height: 0 !important; min-height: 0 !important; overflow: visible !important; }
 [data-testid="stToolbar"] { display: none !important; }
-[data-testid="collapsedControl"],
-[data-testid="stSidebarCollapseButton"],
-button[kind="headerNoPadding"],
-[aria-label="Collapse sidebar"],
-button[title="Collapse sidebar"] {
-    display: none !important;
-    opacity: 0 !important;
-    pointer-events: none !important;
-    visibility: hidden !important;
-    width: 0 !important;
+[data-testid="collapsedControl"] {
+    display: flex !important; z-index: 9999 !important;
+    background: rgba(212,175,55,0.15) !important;
+    border: 1px solid rgba(212,175,55,0.4) !important;
+    border-radius: 4px !important; color: #D4AF37 !important;
+    position: fixed !important; top: 12px !important; left: 8px !important;
 }
+[data-testid="collapsedControl"]:hover { background: rgba(212,175,55,0.3) !important; }
 
 .block-container { padding: 1rem 1rem 3rem !important; max-width:1700px !important; }
 ::-webkit-scrollbar { width:3px; height:3px; }
@@ -174,25 +171,6 @@ hr { border:none !important; border-top:1px solid rgba(212,175,55,0.15) !importa
     margin-bottom:1.5rem;
     animation:pulse 2s ease infinite;
 }
-/* ── LEADERBOARD & RANKINGS ───────────────────────────────── */
-.lb-table { width:100%; border-collapse:collapse; margin-top:1rem; }
-.lb-row { background:rgba(255,255,255,0.02); border-bottom:1px solid var(--bdim); transition:background 0.2s; }
-.lb-row:hover { background:rgba(212,175,55,0.05); }
-.lb-cell { padding:1.2rem 1rem; vertical-align:middle; font-family:'Share Tech Mono',monospace; }
-.lb-rank { font-family:'Orbitron',monospace; font-size:1.1rem; font-weight:900; color:var(--gold); width:80px; }
-.lb-team-name { font-family:'Orbitron',monospace; font-size:0.9rem; color:var(--text); letter-spacing:1px; }
-.lb-meta { font-size:0.65rem; color:var(--dim); margin-top:2px; }
-.hp-label { font-size:0.8rem; font-weight:700; margin-bottom:4px; }
-.hp-bar-bg { width:100%; height:4px; background:rgba(255,255,255,0.08); border-radius:2px; overflow:hidden; }
-.hp-bar-fill { height:100%; border-radius:2px; box-shadow:0 0 10px currentColor; }
-.stat-val { font-size:0.9rem; font-weight:700; margin-bottom:4px; }
-.stat-unit { font-size:0.6rem; color:var(--dim); text-transform:uppercase; letter-spacing:1px; }
-.status-alive { color:var(--green); font-size:0.7rem; font-weight:700; letter-spacing:1px; display:flex; align-items:center; gap:8px; }
-.status-dead { color:var(--red); font-size:0.7rem; font-weight:700; letter-spacing:1px; display:flex; align-items:center; gap:8px; opacity:0.6; }
-.status-dot { width:8px; height:8px; border-radius:50%; background:currentColor; box-shadow:0 0 8px currentColor; }
-
-@keyframes pulse-btn { 0%,100%{transform:scale(1);box-shadow:0 0 0 rgba(212,175,55,0)} 50%{transform:scale(1.02);box-shadow:0 0 20px rgba(212,175,55,0.2)} }
-.btn-pulse { animation: pulse-btn 2s infinite !important; border-color:var(--gold) !important; color:var(--goldb) !important; }
 """
 
 def get_full_css() -> str:

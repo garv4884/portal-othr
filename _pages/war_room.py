@@ -1,6 +1,6 @@
 """
 OVERTHRONE :: _pages/war_room.py
-Advanced UI + Heuristic Bots + Blitz Attacks + Multi-Category Missions
+Ultimate 'Cooked' Integration: High-Fidelity JS Sync + D3.js Organic Map + Premium Strategy
 """
 
 import json
@@ -9,332 +9,373 @@ import random
 from datetime import datetime, timedelta
 import streamlit as st
 import streamlit.components.v1 as components
+from streamlit_autorefresh import st_autorefresh
 
 from db import (
     load_gs, load_evs, terr_count, load_teams, load_users,
     push_ev, save_gs, reset_gs, redis_live, run_code_safe, get_user,
-    simulate_epoch, acquire_epoch_lock, apply_task_rewards, 
-    mark_team_task_done, team_task_cd_remaining
+    simulate_epoch, expand_territory, run_bot_task
 )
 from config import (
     TASKS, BOT_TASKS, DIFF_COLOR, EVENT_COLORS, STARTING_HP, STARTING_AP,
     EPOCH_DURATION_SECS, ATTACK_COST_AP, CELL_COLORS, CELL_GLOW,
-    TERRAIN_SPECIAL, get_amoeba_adjacency, MONARCH_TASK_PORTAL
+    TERRAIN_SPECIAL, MONARCH_TASK_PORTAL
 )
 from styles.theme import get_full_css
-from components.header import render_header
-from components.sidebar import render_sidebar
 
+# -- HELPERS --------------------------------------------------
 def _normalize_answer(value: str) -> str:
     return " ".join((value or "").strip().lower().split())
 
-def _task_attempt_panel(task: dict, team: str, username: str):
-    task_id = task["id"]
-    portal = MONARCH_TASK_PORTAL.get(task_id, {})
-    expected_answer = portal.get("answer", "")
+def _visible_ap(gs, team):
+    real = int(gs["ap"].get(team, 0))
+    shadow = int(gs.get("shadow_task_ap", {}).get(team, 0))
+    return real + shadow
 
-    st.markdown(f"### {task['title']}")
-    st.markdown(task["desc"])
+# -- UI COMPONENTS --------------------------------------------
+def _mount_live_timer_sync(gs):
+    # D3.js powered header timer & progress bar sync
+    end_iso = gs["epoch_end"]
+    components.html(f"""
+        <script>
+            const END_MS = Date.parse("{end_iso}");
+            const DURATION = {EPOCH_DURATION_SECS};
+            const parent = window.parent;
+            const doc = parent.document;
+
+            function tick() {{
+                const timerVal = doc.getElementById('ot-live-timer');
+                const barVal = doc.getElementById('ot-live-bar');
+                if(!timerVal || !barVal) return;
+
+                const rem = Math.max(0, Math.floor((END_MS - Date.now()) / 1000));
+                const m = String(Math.floor(rem/60)).padStart(2,'0');
+                const s = String(rem%60).padStart(2,'0');
+                timerVal.textContent = m + ":" + s;
+                timerVal.style.color = rem <= 60 ? "#FF2244" : "#FFD700";
+                
+                const pct = (rem / DURATION) * 100;
+                barVal.style.width = pct.toFixed(1) + "%";
+            }}
+            if(parent.__otTimer) clearInterval(parent.__otTimer);
+            tick();
+            parent.__otTimer = setInterval(tick, 1000);
+        </script>
+    """, height=0)
+
+def render_d3_map(gs, teams, MT):
+    # The "Cooked" Organic Voronoi Grid
+    grid_json = json.dumps(gs["grid"])
+    team_colors = json.dumps({k: v.get("bg", "#0a1a0e") for k,v in teams.items()})
+    team_strokes = json.dumps({k: v.get("color", "#0099FF") for k,v in teams.items()})
     
-    if "link" in task:
-        st.markdown(f"[🔗 INTEL SOURCE]({task['link']})")
+    meta_dict = {{}}
+    for t_id, t_data in teams.items():
+        meta_dict[t_id] = {
+            "hp": gs["hp"].get(t_id, 0),
+            "ap": _visible_ap(gs, t_id),
+            "terr": gs["grid"].count(t_id),
+            "members": len(t_data.get("members", []))
+        }
+    meta_json = json.dumps(meta_dict)
 
-    ans = st.text_input("Breach Signature", key=f"ans_{task_id}", placeholder="Enter Flag")
-    
-    c1, c2 = st.columns(2)
-    with c1:
-        if st.button("AUTHENTICATE", use_container_width=True, key=f"submit_{task_id}"):
-            current_gs = load_gs()
-            if _normalize_answer(ans) == _normalize_answer(expected_answer):
-                apply_task_rewards(current_gs, team, task["pts"], task["title"])
-                mark_team_task_done(current_gs, team, task_id)
-                save_gs(current_gs)
-                st.success("ACCESS GRANTED.")
-                st.rerun()
-            else:
-                current_gs.setdefault("team_task_cooldown", {})[team] = time.time()
-                save_gs(current_gs)
-                push_ev("TASK", f"FAILED BREACH: {team} on {task['title']}. Security lockdown active.", team)
-                st.error("ACCESS DENIED. KINGDOM LOCKDOWN INITIATED.")
-                st.rerun()
-    with c2:
-        if st.button("ABORT", use_container_width=True, key=f"cancel_{task_id}"):
-            st.rerun()
+    d3_html = f"""
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {{ margin:0; background:transparent; overflow:hidden; }}
+        #map-container {{ width:100%; height:500px; position:relative; }}
+        .cell {{ stroke-width:1.5px; transition:0.3s; cursor:pointer; }}
+        .cell:hover {{ stroke:#fff; stroke-width:3px; opacity:0.8; }}
+        #tooltip {{
+            position:absolute; background:rgba(2,10,15,0.95); border:1px solid #D4AF37;
+            padding:12px; color:#fff; font-family:'Share Tech Mono', monospace; 
+            pointer-events:none; opacity:0; border-radius:4px; z-index:100;
+        }}
+    </script>
+    <div id="map-container">
+        <div id="tooltip"></div>
+        <div id="d3-anchor"></div>
+    </div>
+    <script>
+        const width = 600, height = 500;
+        const svg = d3.select("#d3-anchor").append("svg").attr("viewBox", `0 0 600 500`);
+        const g = svg.append("g");
 
+        const grid = {grid_json};
+        const colors = {team_colors};
+        const strokes = {team_strokes};
+        const meta = {meta_json};
+
+        // Standard point generation from config
+        const n = 30;
+        const points = [];
+        const phi = (1 + Math.sqrt(5)) / 2;
+        for(let i=0; i<n; i++) {{
+            let r = 180 * Math.sqrt((i+0.5)/n);
+            let theta = 2 * Math.PI * i / phi;
+            points.push([300 + r * Math.cos(theta), 250 + r * Math.sin(theta)]);
+        }}
+
+        const delaunay = d3.Delaunay.from(points);
+        const voronoi = delaunay.voronoi([0,0,600,500]);
+
+        g.selectAll("path")
+            .data(points.map((p,i)=>i))
+            .join("path")
+            .attr("class", "cell")
+            .attr("d", i => voronoi.renderCell(i))
+            .attr("fill", i => colors[grid[i]] || "#0a1a0e")
+            .attr("stroke", i => strokes[grid[i]] || "#1a3a1a")
+            .on("mouseover", (e, i) => {{
+                const owner = grid[i];
+                let html = `<div style="color:#D4AF37;font-weight:bold;margin-bottom:5px">CELL ${{i}}</div>`;
+                if(owner) {{
+                    html += `<div style="color:#00E5FF">${{owner}}</div>`;
+                    html += `HP: ${{meta[owner].hp}}<br>AP: ${{meta[owner].ap}}`;
+                }} else html += "WILDERNESS";
+                d3.select("#tooltip").html(html).style("opacity", 1);
+            }})
+            .on("mousemove", e => {{
+                d3.select("#tooltip").style("left", (e.pageX+15)+"px").style("top", (e.pageY-20)+"px");
+            }})
+            .on("mouseout", () => d3.select("#tooltip").style("opacity", 0));
+
+        g.selectAll("text").data(points).join("text")
+            .attr("x", d=>d[0]).attr("y", d=>d[1]).attr("dy","0.3em").attr("text-anchor","middle")
+            .attr("fill","rgba(255,255,255,0.6)").style("font-size","10px").text((d,i)=>i);
+
+        svg.call(d3.zoom().on("zoom", e => g.attr("transform", e.transform)));
+    </script>
+    """
+    components.html(d3_html, height=520)
+
+# -- MAIN DASHBOARD -------------------------------------------
 def show_war_room():
     st.markdown(get_full_css(), unsafe_allow_html=True)
-
     username = st.session_state.username
-    users    = load_users()
-    user     = users.get(username, {})
-    MT       = user.get("team")
-    dn       = user.get("display_name", username)
+    user = get_user(username)
+    MT = user.get("team")
+    dn = user.get("display_name", username)
 
     if not MT:
-        st.warning("You must join a kingdom to access the War Room.")
+        st.warning("Kingdom identity not found. Please join a team.")
         return
 
-    # -- SESSION STATE --
-    if "active_tab" not in st.session_state: st.session_state.active_tab = "Home"
-    if "code_outputs" not in st.session_state: st.session_state.code_outputs = {}
-
-    # -- LOAD DATA --
-    gs    = load_gs()
-    evs   = load_evs(40)
+    # DATA LOAD
+    gs = load_gs()
     teams = load_teams()
-    tc    = terr_count(gs["grid"], list(teams.keys()))
+    evs = load_evs(40)
+    tc = terr_count(gs["grid"], list(teams.keys()))
 
-    from db import get_timer_state
-    remaining = get_timer_state(gs)
+    # EPOCH CHECK
+    from db import simulate_epoch
+    end_dt = datetime.fromisoformat(gs["epoch_end"])
+    remaining = (end_dt - datetime.utcnow()).total_seconds()
     
-    # Check Epoch Rollover
     if remaining <= 0 and not gs.get("game_over"):
-        if acquire_epoch_lock(gs["epoch"]):
-            gs = simulate_epoch(gs)
-        else:
-            time.sleep(1.5)
+        gs = simulate_epoch(gs)
         st.rerun()
 
-    pct_left  = remaining / EPOCH_DURATION_SECS
-    mins_left = int(remaining // 60)
-    secs_left = int(remaining % 60)
+    # AUTOREFRESH
+    st_autorefresh(interval=30000 if remaining > 10 else 5000, key="epoch_sync")
 
-    my_hp   = int(gs["hp"].get(MT, 10000))
-    my_ap   = int(gs["ap"].get(MT, 0))
-    my_terr = tc.get(MT, 0)
+    # SIDEBAR
+    with st.sidebar:
+        st.markdown(f"""
+        <div style="padding:1rem 0; border-bottom:1px solid rgba(212,175,55,0.2); margin-bottom:1.5rem">
+            <div style="font-family:Orbitron; font-size:1.1rem; font-weight:900; letter-spacing:4px; color:var(--gold)">OVERTHRONE</div>
+            <div style="font-family:Share Tech Mono; font-size:0.55rem; letter-spacing:3px; color:var(--dim)">HELIX x ISTE · WAR ROOM OS v5.0</div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown('<div class="sb-title">SOVEREIGN IDENTITY</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="sb-row"><span class="sb-lbl">USER</span><span class="sb-val" style="color:var(--red)">{dn}</span></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="sb-row"><span class="sb-lbl">KINGDOM</span><span class="sb-val" style="color:var(--gold)">{MT}</span></div>', unsafe_allow_html=True)
 
-    # -- RENDER UI --
-    render_sidebar(gs, tc, dn, MT, my_hp, my_ap, my_terr, mins_left, secs_left, pct_left, redis_live, teams, users)
-    render_header(gs, tc, dn, MT, mins_left, secs_left, pct_left, teams, remaining)
+        my_hp, my_ap = int(gs["hp"].get(MT, 0)), _visible_ap(gs, MT)
+        my_terr = gs["grid"].count(MT)
+        st.markdown('<div class="sb-title" style="margin-top:1.5rem">BIOMETRICS · LIVE</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="sb-row"><span class="sb-lbl">HEALTH</span><span class="sb-val" style="color:var(--red)">{my_hp:,}</span></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="sb-row"><span class="sb-lbl">RESOURCES</span><span class="sb-val" style="color:var(--cyan)">{my_ap:,} AP</span></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="sb-row"><span class="sb-lbl">AREA</span><span class="sb-val" style="color:var(--gold)">{my_terr} cells</span></div>', unsafe_allow_html=True)
 
-    # Tabs
-    tab_names = ["Home", "Tasks Human", "Tasks Bot", "Heuristic Bot", "Strategy Deck"]
-    tab_cols  = st.columns(len(tab_names))
+        st.markdown('<div class="sb-title" style="margin-top:1.5rem">CHRONOS SYNC</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="sb-row"><span class="sb-lbl">EPOCH</span><span class="sb-val">{gs["epoch"]}</span></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="sb-row"><span class="sb-lbl">TIME REMAINING</span><span class="sb-val" id="ot-live-timer" style="color:var(--gold)">--:--</span></div>', unsafe_allow_html=True)
+
+        if st.button("LOGOUT", use_container_width=True):
+            st.session_state.logged_in = False; st.rerun()
+
+    # WIN CINEMATIC
+    if gs.get("game_over"):
+        winner = gs["game_over"]
+        st.markdown(f"""
+        <div style="background:var(--void); padding:100px 20px; text-align:center; border:1px solid var(--gold); border-radius:10px; box-shadow:0 0 100px rgba(212,175,55,0.2)">
+            <h1 style="font-family:Orbitron; color:var(--gold); font-size:3.5rem; letter-spacing:12px">SOVEREIGNTY ACHIEVED</h1>
+            <p style="font-family:Share Tech Mono; color:var(--text); font-size:1.5rem">Kingdom {winner} stands alone.</p>
+        </div>
+        """, unsafe_allow_html=True)
+        return
+
+    # HEADER
+    st.markdown(f"""
+    <div class="ot-hdr">
+        <div><div class="ot-logo">OVERTHRONE</div><div class="ot-subtitle">WAR ROOM OS v5.0</div></div>
+        <div style="text-align:right">
+            <div class="ot-epoch-num">EPOCH {gs["epoch"]}</div>
+            <div class="ot-epoch-phase">MOBILIZATION</div>
+        </div>
+    </div>
+    <div class="ot-tbar"><div class="ot-tbar-fill" id="ot-live-bar" style="width:100%"></div></div>
+    """, unsafe_allow_html=True)
+    _mount_live_timer_sync(gs)
+
+    # TABS
+    tab_names = ["HOME", "TASKS (HUMAN)", "TASKS (BOT)", "STRATEGY DECK", "LEADERBOARD"]
+    if "active_tab" not in st.session_state: st.session_state.active_tab = "HOME"
+    t_cols = st.columns(len(tab_names))
     for i, tname in enumerate(tab_names):
-        with tab_cols[i]:
-            if st.button(tname, key=f"tab_{tname}", use_container_width=True):
-                st.session_state.active_tab = tname
-                st.rerun()
+        with t_cols[i]:
+            active = "active" if st.session_state.active_tab == tname else ""
+            if st.button(tname, key=f"nav_{tname}", use_container_width=True):
+                st.session_state.active_tab = tname; st.rerun()
 
     active = st.session_state.active_tab
-    st.markdown(f"<div style='font-family:ShareTechMono,monospace;font-size:0.6rem;color:var(--dim);margin:10px 0'>► {active.upper()}</div>", unsafe_allow_html=True)
 
     # ─────────────────────────────────────────────────────────────
-    # TAB: HOME
+    # HOME
     # ─────────────────────────────────────────────────────────────
-    if active == "Home":
+    if active == "HOME":
         l_col, r_col = st.columns([2.5, 1], gap="large")
         with l_col:
-            st.markdown('<div class="sec-lbl">🗺️ BATTLE ZONE · LIVE ARCHITECTURE</div>', unsafe_allow_html=True)
-            grid_json = json.dumps(gs["grid"])
-            team_colors_json = json.dumps({k: v.get("bg", "#0a1a0e") for k,v in teams.items()})
-            team_strokes_json = json.dumps({k: v.get("color", "#0a1a0e") for k,v in teams.items()})
-            team_meta_json = json.dumps({k: {"hp":gs["hp"].get(k,0),"ap":gs["ap"].get(k,0)} for k in teams.keys()})
-            
-            from components.panels.organic_grid import get_organic_grid_js
-            d3_map_html = get_organic_grid_js(grid_json, team_colors_json, team_strokes_json, team_meta_json, MT)
-            components.html(d3_map_html, height=520)
-
-            # BLITZ ATTACK PANEL
-            st.markdown('<div class="sec-lbl">🗡️ BLITZ EXECUTION</div>', unsafe_allow_html=True)
-            with st.expander("MANUAL BOMBARDMENT (INSTANT CAPTURE)", expanded=True):
-                col_i, col_b = st.columns([2, 1])
-                target_cell = col_i.number_input("Target Index", 0, len(gs["grid"])-1, key="blitz_idx")
-                if col_b.button("LAUNCH BLITZ", use_container_width=True):
-                    # Adjacency Logic
-                    adj = get_amoeba_adjacency(len(gs["grid"]))
-                    my_cells = [i for i, o in enumerate(gs["grid"]) if o == MT]
-                    valid = any(target_cell in adj.get(c, []) for c in my_cells)
-                    
-                    if not valid: st.error("Target not adjacent.")
-                    elif gs["ap"].get(MT, 0) < ATTACK_COST_AP: st.error("Insufficient AP.")
-                    elif gs["grid"][target_cell] == MT: st.error("Target already claimed.")
-                    else:
-                        prev_owner = gs["grid"][target_cell]
-                        gs["grid"][target_cell] = MT
-                        gs["ap"][MT] -= ATTACK_COST_AP
-                        if prev_owner and prev_owner in gs["hp"]:
-                            gs["hp"][prev_owner] = max(0, int(gs["hp"][prev_owner]) - 100)
-                        save_gs(gs)
-                        push_ev("ATTACK", f"BLITZ: {MT} bombarded cell {target_cell} (-{ATTACK_COST_AP} AP)", MT)
-                        st.success("Target Captured.")
-                        st.rerun()
-
+            render_d3_map(gs, teams, MT)
         with r_col:
             st.markdown('<div class="sec-lbl">📡 LIVE DECRYPTIONS</div>', unsafe_allow_html=True)
-            st.markdown('<div class="ev-feed">', unsafe_allow_html=True)
+            feed = '<div class="ev-feed">'
             for ev in evs:
                 clr = EVENT_COLORS.get(ev["kind"], "#fff")
-                st.markdown(f'<div class="ev-item" style="border-left-color:{clr}"><span class="ev-ts">{ev["ts"]}</span> {ev["msg"]}</div>', unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
+                feed += f'<div class="ev-item" style="border-left-color:{clr}"><span class="ev-ts">{ev["ts"]}</span> {ev["msg"]}</div>'
+            feed += '</div>'
+            st.markdown(feed, unsafe_allow_html=True)
 
     # ─────────────────────────────────────────────────────────────
-    # TAB: TASKS HUMAN
+    # TASKS (HUMAN)
     # ─────────────────────────────────────────────────────────────
-    elif active == "Tasks Human":
-        cd_rem = team_task_cd_remaining(gs, MT)
-        if cd_rem > 0:
-            st.markdown(f'<div class="cd-bar">⏳ KINGDOM LOCKDOWN: {int(cd_rem//60):02d}:{int(cd_rem%60):02d}</div>', unsafe_allow_html=True)
-        
+    elif active == "TASKS (HUMAN)":
         st.markdown('<div class="sec-lbl">🧠 HUMAN INTELLIGENCE · MONARCH CTF</div>', unsafe_allow_html=True)
+        solved = gs.get("task_done_by_user", {}).get(username, {})
         cols = st.columns(2)
-        solved_list = gs.get("ctf_solved", {}).get(MT, [])
-        
         for i, task in enumerate(TASKS["monarch"]):
-            is_solved = task["id"] in solved_list
+            is_done = task["id"] in solved
             dc = DIFF_COLOR.get(task["diff"], "cyan")
             with cols[i % 2]:
-                st.markdown(f"""
-                <div class="tc" style="border-top:2px solid {dc}44">
-                    <div class="tc-diff" style="background:{dc}18;color:{dc};border:1px solid {dc}44">{task['diff']}</div>
-                    <div class="tc-title">{task['title']}</div>
-                    <div class="tc-desc">{task['desc']}</div>
-                    <div class="tc-pts">+{task['pts']} AP</div>
-                </div>
-                """, unsafe_allow_html=True)
-                if is_solved:
-                    st.success("SECURED")
+                st.markdown(f'<div class="tc" style="border-top:2px solid {dc}44"><div class="tc-title">{task["title"]}</div><div class="tc-desc">{task["desc"]}</div><div class="tc-pts">+{task["pts"]} AP</div></div>', unsafe_allow_html=True)
+                if is_done: st.success("SECURED")
                 else:
-                    if st.button(f"ATTEMPT {task['id']}", use_container_width=True, disabled=cd_rem > 0):
-                        _task_attempt_panel(task, MT, username)
+                    ans = st.text_input(f"Signal for {task['id']}", key=f"ans_{task['id']}")
+                    if st.button(f"AUTHENTICATE {task['id']}", key=f"btn_{task['id']}"):
+                        if _normalize_answer(ans) == _normalize_answer(MONARCH_TASK_PORTAL[task["id"]]["answer"]):
+                            gs = load_gs()
+                            gs.setdefault("task_done_by_user", {}).setdefault(username, {})[task["id"]] = datetime.utcnow().isoformat()
+                            gs["ap"][MT] = int(gs["ap"].get(MT, 0)) + task["pts"]
+                            save_gs(gs); st.success("ACCESS GRANTED"); st.rerun()
+                        else: st.error("ACCESS DENIED")
 
     # ─────────────────────────────────────────────────────────────
-    # TAB: TASKS BOT
+    # TASKS (BOT)
     # ─────────────────────────────────────────────────────────────
-    elif active == "Tasks Bot":
+    elif active == "TASKS (BOT)":
         st.markdown('<div class="sec-lbl">💻 SOVEREIGN · CATEGORICAL CODING</div>', unsafe_allow_html=True)
-        cats = sorted(list(set(t["category"] for t in BOT_TASKS.values())))
-        cat = st.selectbox("Category", cats)
-        
-        c_tasks = [t for t in BOT_TASKS.values() if t["category"] == cat]
-        t_id = st.selectbox("Select Mission", [t["id"] for t in c_tasks])
+        cat = st.selectbox("Category", sorted(list(set(t["category"] for t in BOT_TASKS.values()))))
+        t_id = st.selectbox("Mission", [t["id"] for t in BOT_TASKS.values() if t["category"] == cat])
         task = BOT_TASKS[t_id]
         
         st.markdown(f"### {task['title']}")
-        st.markdown(task['description'])
-        st.markdown(f"**Reward:** {task['ap_reward']} AP | **Difficulty:** {task['difficulty']}")
+        st.markdown(task["description"])
+        code = st.text_area("Implementation", value=task["template"], height=200)
         
-        code = st.text_area("Python Implementation", value=task["template"], height=300)
-        
-        col_r, col_s = st.columns(2)
-        with col_r:
-            if st.button("RUN TEST HARNESS", use_container_width=True):
-                full_code = code + "\n" + task["test_harness"] + "\nprint(verify_val)"
-                so, se = run_code_safe(full_code)
-                st.session_state.code_outputs[t_id] = {"so": so, "se": se}
-        with col_s:
-            if st.button("SUBMIT FIRMWARE", use_container_width=True):
-                full_code = code + "\n" + task["test_harness"] + "\nprint(verify_val)"
-                so, se = run_code_safe(full_code)
-                try:
-                    res = float(so.strip()) if "." in so else int(so.strip())
-                    if res == task["expected_output"]:
-                        gs = load_gs()
-                        if t_id not in gs.get("ctf_solved", {}).get(MT, []):
-                            apply_task_rewards(gs, MT, task["ap_reward"], task["title"])
-                            mark_team_task_done(gs, MT, t_id)
-                            save_gs(gs)
-                            st.success("Logic Validated. AP Awarded.")
-                            st.rerun()
-                    else: st.error(f"Logic failure. Expected {task['expected_output']}, got {res}")
-                except: st.error("Execution failed or returned invalid data.")
-
-        if t_id in st.session_state.code_outputs:
-            out = st.session_state.code_outputs[t_id]
-            st.code(out["so"] or out["se"])
-
-    # ─────────────────────────────────────────────────────────────
-    # TAB: HEURISTIC BOT
-    # ─────────────────────────────────────────────────────────────
-    elif active == "Heuristic Bot":
-        st.markdown('<div class="sec-lbl">⚙️ HEURISTICS · TARGETING ENGINE</div>', unsafe_allow_html=True)
-        default_bot = 'def evaluate_target(target):\n    """\n    target: {\n      "is_empty": bool,\n      "owner": str,\n      "owner_hp": int,\n      "owner_ap": int,\n      "owner_territory": int\n    }\n    """\n    return 0'
-        db_code = gs.get("bots", {}).get(MT, default_bot)
-        user_code = st.text_area("Bot Code (eval_target)", value=db_code, height=400)
-        
-        if st.button("SAVE TARGETING LOGIC", use_container_width=True):
+        if st.button("SUBMIT FIRMWARE"):
             gs = load_gs()
-            gs.setdefault("bots", {})[MT] = user_code
-            save_gs(gs)
-            st.success("Synchronized with Core Interface.")
+            ok, msg = run_bot_task(t_id, code, MT, gs)
+            if ok:
+                gs["ap"][MT] += task["ap_reward"]
+                save_gs(gs); st.success(msg); st.rerun()
+            else: st.error(msg)
 
     # ─────────────────────────────────────────────────────────────
-    # TAB: STRATEGY DECK
+    # STRATEGY DECK
     # ─────────────────────────────────────────────────────────────
-    elif active == "Strategy Deck":
-        st.markdown('<div class="sec-lbl">🃏 DECK · POLITICAL MANEUVERS</div>', unsafe_allow_html=True)
-        c1, c2, c3 = st.columns(3)
+    elif active == "STRATEGY DECK":
+        st.markdown('<div class="sec-lbl">🃏 ACTION CARDS · STRATEGY DECK</div>', unsafe_allow_html=True)
         all_teams = [t for t in teams.keys() if t != MT]
         alliances = gs.get("alliances", {}).get(MT, [])
-        ally_reqs = gs.get("alliance_reqs", {}).get(MT, [])
         
+        # Action Cards
+        c1, c2, c3 = st.columns(3)
         with c1:
-            st.markdown('<div style="background:rgba(0,204,136,0.05); border-top:2px solid #00CC88; padding:15px; border-radius:4px; height:200px"><h4 style="color:#00CC88; margin:0; font-family:Orbitron;">HANDSHAKE</h4><p style="font-size:0.75rem; color:#aaa;">Pact of non-aggression.</p></div>', unsafe_allow_html=True)
-            non_allies = [t for t in all_teams if t not in alliances]
-            t_ally = st.selectbox("Offer Alliance to:", ["--"] + non_allies)
-            if st.button("SEND ALLIANCE REQUEST") and t_ally != "--":
-                gs = load_gs()
-                gs.setdefault("alliance_reqs", {}).setdefault(t_ally, []).append(MT)
-                save_gs(gs)
-                st.info("Sent.")
-            if ally_reqs:
-                for req in ally_reqs:
-                    if st.button(f"ACCEPT {req}"):
-                        gs = load_gs()
-                        gs.setdefault("alliances", {}).setdefault(MT, []).append(req)
-                        gs["alliances"].setdefault(req, []).append(MT)
-                        gs["alliance_reqs"][MT].remove(req)
-                        save_gs(gs)
-                        st.rerun()
-                        
+            st.markdown('<div class="tc" style="border-top:2px solid #00CC88"><h4>HANDSHAKE</h4><p>Form Alliance</p></div>', unsafe_allow_html=True)
+            t_ally = st.selectbox("Partner", ["--"] + [t for t in all_teams if t not in alliances])
+            if st.button("OFFER PACT") and t_ally != "--":
+                gs = load_gs(); gs.setdefault("alliance_reqs", {}).setdefault(t_ally, []).append(MT); save_gs(gs); st.success("Sent.")
+        
         with c2:
-            st.markdown('<div style="background:rgba(255,10,50,0.05); border-top:2px solid #FF2244; padding:15px; border-radius:4px; height:200px"><h4 style="color:#FF2244; margin:0; font-family:Orbitron;">BACKSTAB</h4><p style="font-size:0.75rem; color:#aaa;">Betray an ally.</p></div>', unsafe_allow_html=True)
-            if alliances:
-                t_bs = st.selectbox("Target:", ["--"] + alliances)
-                if st.button("QUEUE BACKSTAB") and t_bs != "--":
-                    gs = load_gs()
-                    gs.setdefault("queued_actions", {})[MT] = {"action": "BACKSTAB", "target": t_bs}
-                    save_gs(gs)
-                    st.success("Traitor.")
-            else: st.info("No allies.")
-            
-        with c3:
-            st.markdown('<div style="background:rgba(0,229,255,0.08); border-top:2px solid #00E5FF; padding:15px; border-radius:4px; height:200px"><h4 style="color:#00E5FF; margin:0; font-family:Orbitron;">SUSPICION</h4><p style="font-size:0.75rem; color:#aaa;">Accuse an ally.</p></div>', unsafe_allow_html=True)
-            if alliances:
-                t_susp = st.selectbox("Suspect:", ["--"] + alliances)
-                if st.button("QUEUE SUSPICION") and t_susp != "--":
-                    gs = load_gs()
-                    gs.setdefault("queued_actions", {})[MT] = {"action": "SUSPICION", "target": t_susp}
-                    save_gs(gs)
-                    st.success("Judiciary.")
-            else: st.info("No allies.")
+            st.markdown('<div class="tc" style="border-top:2px solid #FF2244"><h4>BACKSTAB</h4><p>Secret Betrayal</p></div>', unsafe_allow_html=True)
+            t_bs = st.selectbox("Betray", ["--"] + alliances)
+            if st.button("QUEUE BETRAYAL") and t_bs != "--":
+                gs = load_gs(); gs.setdefault("queued_actions", {})[MT] = {"action": "BACKSTAB", "target": t_bs}; save_gs(gs); st.success("Queued.")
 
-    # Chronos Sync
-    components.html(f"""
-    <script>
-        const raw_r = {remaining};
-        function syncClocks() {{
-            const win = window.parent;
-            if(!win) return;
-            if(win._otChronos) clearInterval(win._otChronos);
-            let r = Math.floor(raw_r);
-            function tick() {{
-                const timerIDs = ['ot-global-timer', 'ot-sidebar-timer'];
-                timerIDs.forEach(id => {{
-                    const el = win.document.getElementById(id);
-                    if(el) {{
-                        const m = Math.floor(r/60).toString().padStart(2,'0');
-                        const s = Math.floor(r%60).toString().padStart(2,'0');
-                        el.innerText = m + ':' + s;
-                    }}
-                }});
-                if(r === 0) win.location.reload(); 
-                r--;
-                if(r < -20) r = -20;
-            }}
-            tick();
-            win._otChronos = setInterval(tick, 1000);
-        }}
-        setTimeout(syncClocks, 250);
-    </script>
-    """, height=0)
+        with c3:
+            st.markdown('<div class="tc" style="border-top:2px solid #00E5FF"><h4>SUSPICION</h4><p>Catch Betrayal</p></div>', unsafe_allow_html=True)
+            t_susp = st.selectbox("Verify", ["--"] + alliances)
+            if st.button("QUEUE AUDIT") and t_susp != "--":
+                gs = load_gs(); gs.setdefault("queued_actions", {})[MT] = {"action": "SUSPICION", "target": t_susp}; save_gs(gs); st.success("Queued.")
+
+        # Attack Queue
+        st.markdown('<div class="sec-lbl" style="margin-top:2rem">⚔️ BOMBARDMENT QUEUE</div>', unsafe_allow_html=True)
+        q_target = st.selectbox("Target", ["--"] + all_teams)
+        q_hits = st.number_input("Hits (500 AP each)", 1, 10, 1)
+        if st.button("QUEUE ATTACK") and q_target != "--":
+            gs = load_gs(); gs.setdefault("queued_attacks", []).append({"actor": MT, "target": q_target, "hits": q_hits}); save_gs(gs); st.success("Added to Queue.")
+
+        # Expansion
+        st.markdown('<div class="sec-lbl" style="margin-top:2rem">🌍 EXPANSION</div>', unsafe_allow_html=True)
+        if st.button("EXPAND ADJACENT (150 AP)"):
+            gs = load_gs()
+            ok, msg = expand_territory(gs, MT)
+            if ok: save_gs(gs); st.success(msg); st.rerun()
+            else: st.error(msg)
+
+    # ─────────────────────────────────────────────────────────────
+    # LEADERBOARD
+    # ─────────────────────────────────────────────────────────────
+    elif active == "LEADERBOARD":
+        st.markdown('<div class="sec-lbl">🏆 KINGDOM RANKINGS · LIVE STANDINGS</div>', unsafe_allow_html=True)
+        stats = []
+        for tname, tdata in teams.items():
+            stats.append({
+                "name": tname, "hp": gs["hp"].get(tname, 0), "ap": _visible_ap(gs, tname),
+                "terr": gs["grid"].count(tname), "color": tdata.get("color"), "members": len(tdata.get("members", []))
+            })
+        stats.sort(key=lambda x: (x["terr"], x["hp"]), reverse=True)
+
+        st.markdown('<table class="lb-table">', unsafe_allow_html=True)
+        for i, s in enumerate(stats):
+            hp_w = min(100, (s["hp"]/STARTING_HP)*100)
+            st.markdown(f"""
+            <tr class="lb-row">
+                <td class="lb-cell lb-rank">#{i+1}</td>
+                <td class="lb-cell">
+                    <div style="color:{s['color']}; font-family:Orbitron; font-weight:bold">{s['name']}</div>
+                    <div style="font-size:0.5rem; color:var(--dim)">{s['members']} MEMBERS</div>
+                </td>
+                <td class="lb-cell" style="width:200px">
+                    <div class="hp-bar-bg"><div class="hp-bar-fill" style="width:{hp_w}%; background:{s['color']}"></div></div>
+                    <div style="font-size:0.55rem; color:{s['color']}">{s['hp']:,} HP</div>
+                </td>
+                <td class="lb-cell" style="text-align:right">
+                    <div style="color:var(--gold); font-family:Share Tech Mono">{s['terr']} CELLS</div>
+                    <div style="color:var(--cyan); font-family:Share Tech Mono">{s['ap']:,} AP</div>
+                </td>
+            </tr>
+            """, unsafe_allow_html=True)
+        st.markdown('</table>', unsafe_allow_html=True)

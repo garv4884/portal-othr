@@ -1,324 +1,374 @@
-import sys
+import hashlib
 import json
+import logging
+import os
+import subprocess
+import sys
 import time
 import random
-import subprocess
 from datetime import datetime, timedelta
+
 import streamlit as st
-import redis
 
-# -- CONFIG IMPORTS ------------------------------------------
-# Note: we import these to ensure simulate_epoch has access to constants
-from config import (
-    STARTING_HP, STARTING_AP, EPOCH_DURATION_SECS, 
-    ATTACK_COST_AP, TEAM_PALETTE
-)
+# Import config constants
+try:
+	from config import TEAM_PALETTE, EPOCH_DURATION_SECS, STARTING_HP, STARTING_AP, ATTACK_COST_AP
+except ImportError:
+	pass
 
-# -- REDIS CONNECTION ----------------------------------------
-def get_redis_connection():
-    # Production: Use internal fly.io / container address or st.secrets
-    url = st.secrets.get("REDIS_URL", "redis://localhost:6379")
-    return redis.from_url(url, decode_responses=True)
+_LOG = logging.getLogger(__name__)
 
-R = get_redis_connection()
+# -- STORAGE BACKENDS -----------------------------------------
+class InMemoryStore:
+	def __init__(self):
+		self._kv = {}
 
-def redis_live():
-    try:
-        return R.ping()
-    except:
-        return False
+	def get(self, key):
+		return self._kv.get(key)
 
-# -- USER MANAGEMENT -----------------------------------------
+	def set(self, key, value, ex=None):
+		self._kv[key] = value
+		return True
+
+	def lpush(self, key, *values):
+		items = self._kv.get(key, [])
+		if not isinstance(items, list):
+			items = []
+		for value in values:
+			items.insert(0, value)
+		self._kv[key] = items
+		return len(items)
+
+	def lrange(self, key, start, end):
+		items = self._kv.get(key, [])
+		if not isinstance(items, list):
+			return []
+		stop = None if end == -1 else end + 1
+		return items[start:stop]
+
+	def delete(self, key):
+		self._kv.pop(key, None)
+		return True
+
+	def flushdb(self):
+		self._kv.clear()
+		return True
+
+	def ping(self):
+		return True
+
+class SupabaseStore:
+	def __init__(self, url: str, key: str, table: str = "ot_store"):
+		from supabase import create_client
+		self.client = create_client(url, key)
+		self.table = table
+		self._max_retries = 2
+		self._retry_delay = 0.5
+
+	def _retry_operation(self, operation_func, operation_name="operation"):
+		import time
+		last_error = None
+		for attempt in range(self._max_retries + 1):
+			try:
+				return operation_func()
+			except Exception as e:
+				last_error = e
+				if attempt < self._max_retries:
+					wait_time = self._retry_delay * (2 ** attempt)
+					time.sleep(wait_time)
+				else:
+					_LOG.error(f"[DB] {operation_name} failed: {str(e)[:100]}")
+		raise last_error
+
+	def get(self, key):
+		try:
+			res = (self.client.table(self.table).select("value").eq("key", key).limit(1).execute())
+			data = res.data or []
+			return data[0].get("value") if data else None
+		except Exception:
+			return None
+
+	def set(self, key, value, ex=None):
+		try:
+			self.client.table(self.table).upsert({"key": key, "value": value}).execute()
+			return True
+		except Exception:
+			return False
+
+	def lpush(self, key, *values):
+		items = self.get(key)
+		if not isinstance(items, list): items = []
+		for value in values: items.insert(0, value)
+		self.set(key, items)
+		return len(items)
+
+	def lrange(self, key, start, end):
+		items = self.get(key)
+		if not isinstance(items, list): return []
+		stop = None if end == -1 else end + 1
+		return items[start:stop]
+
+	def delete(self, key):
+		try:
+			self.client.table(self.table).delete().eq("key", key).execute()
+			return True
+		except Exception:
+			return False
+
+	def ping(self):
+		try:
+			self.client.table(self.table).select("key").limit(1).execute()
+			return True
+		except Exception:
+			return False
+
+@st.cache_resource
+def get_store():
+	try:
+		url = st.secrets.get("SUPABASE_URL", os.getenv("SUPABASE_URL", ""))
+		key = st.secrets.get("SUPABASE_KEY", os.getenv("SUPABASE_KEY", ""))
+		table = st.secrets.get("SUPABASE_TABLE", os.getenv("SUPABASE_TABLE", "ot_store"))
+		if not url or not key: raise ValueError("Config missing")
+		store = SupabaseStore(url, key, table)
+		store.ping()
+		return store, True
+	except Exception:
+		return InMemoryStore(), False
+
+R, supabase_live = get_store()
+redis_live = supabase_live  # Backward compatibility for UI indicators
+
+# -- ACCOUNTS -------------------------------------------------
+def hash_pw(pw):
+	return hashlib.sha256(pw.encode()).hexdigest()
+
 def load_users():
-    raw = R.get("ot:users")
-    if raw:
-        try:
-            return json.loads(raw)
-        except:
-            pass
-    return {}
+	raw = R.get("ot:users")
+	if raw:
+		try: return json.loads(raw)
+		except: pass
+	return {}
 
 def save_users(users):
-    R.set("ot:users", json.dumps(users))
+	R.set("ot:users", json.dumps(users))
 
 def get_user(username):
-    users = load_users()
-    return users.get(username)
+	return load_users().get(username)
 
-# -- TEAM MANAGEMENT -----------------------------------------
+# -- TEAMS ---------------------------------------------------
 def load_teams():
-    raw = R.get("ot:teams_meta")
-    if raw:
-        try:
-            return json.loads(raw)
-        except:
-            pass
-    return {}
+	raw = R.get("ot:teams_meta")
+	if raw:
+		try: return json.loads(raw)
+		except: pass
+	return {}
 
 def save_teams(teams):
-    R.set("ot:teams_meta", json.dumps(teams))
-
-def _active_backstabber_for_team(gs, target_team):
-    """Returns the name of the kingdom currently queuing a backstab against target_team."""
-    queued = gs.get("queued_actions", {})
-    for actor, action in queued.items():
-        if action.get("action") == "BACKSTAB" and action.get("target") == target_team:
-            if gs["hp"].get(actor, 0) > 0:
-                return actor
-    return None
+	R.set("ot:teams_meta", json.dumps(teams))
 
 def create_team(tname, username, join_code=""):
-    tname = tname.strip()
-    teams = load_teams()
-    users = load_users()
-    
-    if tname in teams:
-        return False, "Kingdom name already claimed."
-    
-    idx = len(teams) % len(TEAM_PALETTE)
-    config_col = TEAM_PALETTE[idx]
-    
-    teams[tname] = {
-        "creator": username,
-        "join_code": join_code,
-        "members": [username],
-        "created": datetime.utcnow().isoformat(),
-        "color": config_col["color"],
-        "bg": config_col["bg"],
-        "icon": config_col["icon"]
-    }
-    save_teams(teams)
-    
-    if username in users:
-        users[username]["team"] = tname
-        save_users(users)
-    
-    gs = load_gs()
-    if tname not in gs["hp"]:
-        gs["hp"][tname] = STARTING_HP
-        gs["ap"][tname] = STARTING_AP
-        
-        # Random initial spawn
-        empty = [i for i, owner in enumerate(gs["grid"]) if not owner]
-        if empty:
-            cell = random.choice(empty)
-            gs["grid"][cell] = tname
-        save_gs(gs)
-        
-    return True, f"Kingdom {tname} established."
+	tname = tname.strip()
+	teams = load_teams()
+	users = load_users()
+	if len(teams) >= 30: return False, "Map capacity reached."
+	if tname in teams: return False, "Kingdom claimed."
+
+	idx = len(teams) % len(TEAM_PALETTE)
+	col = TEAM_PALETTE[idx]
+
+	teams[tname] = {
+		"creator": username,
+		"join_code": join_code,
+		"members": [username],
+		"created": datetime.utcnow().isoformat(),
+		"color": col["color"], "bg": col["bg"], "icon": col["icon"],
+	}
+	save_teams(teams)
+
+	if username in users:
+		users[username]["team"] = tname
+		save_users(users)
+
+	gs = load_gs()
+	if tname not in gs["hp"]:
+		gs["hp"][tname] = STARTING_HP
+		gs["ap"][tname] = STARTING_AP
+		empty = [i for i, owner in enumerate(gs["grid"]) if not owner]
+		if empty:
+			gs["grid"][random.choice(empty)] = tname
+		save_gs(gs)
+
+	return True, f"Kingdom {tname} established."
 
 # -- GAME STATE ----------------------------------------------
 def _init_state():
-    return {
-        "grid": [""] * 30,
-        "hp": {},
-        "ap": {},
-        "epoch": 1,
-        "epoch_end": (datetime.utcnow() + timedelta(seconds=EPOCH_DURATION_SECS)).isoformat(),
-        "ctf_solved": {},
-        "bypassed": {},
-        "alliances": {},
-        "alliance_reqs": {},
-        "queued_actions": {}
-    }
+	return {
+		"grid": [""] * 30,
+		"hp": {}, "ap": {},
+		"epoch": 1,
+		"phase": "MOBILIZATION",
+		"epoch_end": (datetime.utcnow() + timedelta(seconds=EPOCH_DURATION_SECS)).isoformat(),
+		"queued_actions": {},
+		"queued_attacks": [],
+		"task_done_by_user": {},
+		"task_done_by_team": {},
+		"alliances": {},
+		"alliance_reqs": {},
+		"shadow_task_ap": {}
+	}
 
 def load_gs():
-    raw = R.get("ot:state")
-    if raw:
-        try:
-            return json.loads(raw)
-        except:
-            pass
-    state = _init_state()
-    save_gs(state)
-    return state
+	raw = R.get("ot:state")
+	if raw:
+		try: return json.loads(raw)
+		except: pass
+	state = _init_state()
+	save_gs(state)
+	return state
 
 def save_gs(state):
-    R.set("ot:state", json.dumps(state))
-
-def reset_gs():
-    R.delete("ot:state")
-    R.delete("ot:events")
+	R.set("ot:state", json.dumps(state))
 
 def push_ev(kind, msg, team=None):
-    event = {
-        "ts": datetime.utcnow().strftime("%H:%M:%S"),
-        "kind": kind,
-        "msg": msg,
-        "team": team
-    }
-    R.lpush("ot:events", json.dumps(event))
-    R.ltrim("ot:events", 0, 99)
+	event = {"ts": datetime.utcnow().strftime("%H:%M:%S"), "kind": kind, "msg": msg, "team": team}
+	R.lpush("ot:events", json.dumps(event))
 
 def load_evs(limit=40):
-    raw = R.lrange("ot:events", 0, limit-1)
-    evs = []
-    for r in raw:
-        try: evs.append(json.loads(r))
-        except: pass
-    return evs
+	res = R.lrange("ot:events", 0, limit - 1)
+	out = []
+	for item in res:
+		try: out.append(json.loads(item))
+		except: pass
+	return out
 
 def terr_count(grid, teams_list):
-    counts = {t: 0 for t in teams_list}
-    for cell in grid:
-        if cell in counts:
-            counts[cell] += 1
-    return counts
-
-# -- ECONOMICS & TASKS ---------------------------------------
-def team_task_cd_remaining(gs, team):
-    last_fail = gs.get("team_task_cooldown", {}).get(team, 0)
-    elapsed = time.time() - last_fail
-    return max(0, 180 - elapsed)
-
-def apply_task_rewards(gs, team, pts, title):
-    # Betrayal Interception
-    traitor = _active_backstabber_for_team(gs, team)
-    if traitor:
-        gs["ap"][traitor] = int(gs["ap"].get(traitor, 0)) + pts
-        gs.setdefault("shadow_ap", {}).setdefault(team, 0)
-        gs["shadow_ap"][team] += pts
-        push_ev("BACKSTAB", f"INTERCEPTED: {traitor} stole {pts} AP from {team} during '{title}'!", traitor)
-        return
-
-    # Normal Reward Execution
-    gs["ap"][team] = int(gs["ap"].get(team, 0)) + pts
-    
-    # Alliance Points Sharing (Hardik's Portal Logic)
-    allies = gs.get("alliances", {}).get(team, [])
-    for ally in allies:
-        if gs["hp"].get(ally, 0) > 0:
-            gs["ap"][ally] = int(gs["ap"].get(ally, 0)) + pts
-            
-    push_ev("TASK", f"Kingdom {team} secured '{title}'. (+{pts} AP distributed)", team)
-
-def mark_team_task_done(gs, team, task_id):
-    solved = gs.setdefault("ctf_solved", {})
-    if team not in solved: solved[team] = []
-    if task_id not in solved[team]:
-        solved[team].append(task_id)
+	counts = {t: 0 for t in teams_list}
+	for cell in grid:
+		if cell in counts: counts[cell] += 1
+	counts[""] = grid.count("")
+	return counts
 
 # -- SIMULATION ENGINE ---------------------------------------
-def get_timer_state(gs):
-    try:
-        end_dt = datetime.fromisoformat(gs["epoch_end"])
-        diff = (end_dt - datetime.utcnow()).total_seconds()
-        return max(0, diff)
-    except:
-        return 0
-
-def acquire_epoch_lock(epoch_num):
-    # Atomic lock to prevent multi-simulation
-    key = f"ot:lock:epoch:{epoch_num}"
-    return R.set(key, "locked", nx=True, ex=30)
-
-def execute_heuristic_bot(code, tname, gs, teams_meta):
-    """
-    Evaluates every cell on the map using the team's heuristic logic.
-    Returns (target_index, score) for the highest-scoring valid move.
-    """
-    from config import get_amoeba_adjacency
-    adj = get_amoeba_adjacency(len(gs["grid"]))
-    my_cells = [i for i, owner in enumerate(gs["grid"]) if owner == tname]
-    alliances = gs.get("alliances", {}).get(tname, [])
-    
-    valid_targets = set()
-    for c in my_cells:
-        valid_targets.update([n for n in adj.get(c, []) if gs["grid"][n] != tname and gs["grid"][n] not in alliances])
-
-    if not valid_targets:
-        return None, 0
-
-    best_idx = None
-    best_score = -1e9
-    
-    # Pre-calculate team territories for the target metadata
-    tc = terr_count(gs["grid"], list(teams_meta.keys()))
-
-    for idx in valid_targets:
-        target_owner = gs["grid"][idx]
-        target_meta = {
-            "is_empty": (not target_owner),
-            "owner": target_owner if target_owner else "NONE",
-            "owner_hp": int(gs["hp"].get(target_owner, 0)) if target_owner else 0,
-            "owner_ap": int(gs["ap"].get(target_owner, 0)) if target_owner else 0,
-            "owner_territory": tc.get(target_owner, 0) if target_owner else 0
-        }
-        
-        # Inject standard evaluate_target wrapper
-        injected_code = f"""
-import json
-target = {json.dumps(target_meta)}
-{code}
-try:
-    print(evaluate_target(target))
-except Exception:
-    print(0)
-"""
-        stdout, stderr = run_code_safe(injected_code, timeout=0.5)
-        try:
-            score = int(stdout.strip()) if stdout.strip() else 0
-            if score > best_score:
-                best_score = score
-                best_idx = idx
-        except:
-            continue
-
-    return best_idx, best_score
-
 def simulate_epoch(gs):
-    # Complex Rollover Logic with Bot Heuristics
-    gs = dict(gs)
-    gs["epoch"] = int(gs.get("epoch", 0)) + 1
-    gs["epoch_end"] = (datetime.utcnow() + timedelta(seconds=EPOCH_DURATION_SECS)).isoformat()
-    
-    teams_meta = load_teams()
-    bypassed_teams = gs.get("bypassed", {})
-    
-    # 1. Clear Shadow AP & distribute real rewards from previous betrayed tasks
-    gs["shadow_ap"] = {}
-    
-    # 2. Heuristic Bot Attacks
-    from config import ATTACK_COST_AP
-    bot_logic = gs.get("bots", {})
-    for tname, bcode in bot_logic.items():
-        if tname in bypassed_teams: continue
-        if gs["hp"].get(tname, 0) <= 0: continue
-        
-        target_idx, score = execute_heuristic_bot(bcode, tname, gs, teams_meta)
-        if target_idx is not None and int(gs["ap"].get(tname, 0)) >= ATTACK_COST_AP:
-            target_owner = gs["grid"][target_idx]
-            gs["grid"][target_idx] = tname
-            gs["ap"][tname] -= ATTACK_COST_AP
-            if target_owner and target_owner in gs["hp"]:
-                gs["hp"][target_owner] = max(0, int(gs["hp"][target_owner]) - 100)
-            push_ev("ATTACK", f"BOT ({tname}) captured cell {target_idx} (Score: {score})", tname)
+	# Hardik's 'Cooked' Resolution Logic
+	gs = dict(gs)
+	gs["epoch"] += 1
+	gs["epoch_end"] = (datetime.utcnow() + timedelta(seconds=EPOCH_DURATION_SECS)).isoformat()
+	
+	queued = gs.get("queued_actions", {})
+	gs["queued_actions"] = {}
+	queued_attacks = gs.get("queued_attacks", [])
+	gs["queued_attacks"] = []
+	blocked_backstabbers = set()
+	
+	# 1. Resolve Suspicions (Judicial Discovery)
+	for actor, action in list(queued.items()):
+		if action["action"] == "SUSPICION":
+			target = action["target"]
+			t_action = queued.get(target)
+			if t_action and t_action["action"] == "BACKSTAB" and t_action["target"] == actor:
+				dmg = 3000
+				gs["hp"][target] = max(0, int(gs["hp"].get(target, 0)) - dmg)
+				blocked_backstabbers.add(target)
+				push_ev("SYS", f"DISCOVERY: {actor} caught {target} plot! {target} suffers -{dmg} HP.", actor)
+			else:
+				dmg = 2000
+				gs["hp"][actor] = max(0, int(gs["hp"].get(actor, 0)) - dmg)
+				push_ev("SYS", f"FAILURE: {actor} falsely accused {target}. {actor} suffers -{dmg} HP.", actor)
 
-    # 3. Standard Passive Rollover
-    gs["bypassed"] = {}
-    gs["queued_actions"] = {}
-    for t in gs["hp"]:
-        if gs["hp"].get(t, 0) > 0:
-            gs["ap"][t] = int(gs["ap"].get(t, 0)) + 150 # Passive tick
+	# 2. Resolve Backstabs
+	for actor, action in list(queued.items()):
+		if action["action"] == "BACKSTAB" and actor not in blocked_backstabbers:
+			target = action["target"]
+			if actor in gs["alliances"] and target in gs["alliances"][actor]: gs["alliances"][actor].remove(target)
+			if target in gs["alliances"] and actor in gs["alliances"][target]: gs["alliances"][target].remove(actor)
+			dmg = 3000
+			gs["hp"][target] = max(0, int(gs["hp"].get(target, 0)) - dmg)
+			push_ev("ATTACK", f"BETRAYAL: {actor} backstabbed {target} (-{dmg} HP)!", actor)
 
-    # 4. Fallout Cleanup
-    for t, hp in list(gs["hp"].items()):
-        if hp <= 0:
-            for i in range(len(gs["grid"])):
-                if gs["grid"][i] == t:
-                    gs["grid"][i] = ""
+	# 3. Resolve Queued Human Attacks
+	for attack in queued_attacks:
+		actor, target, requested = attack.get("actor"), attack.get("target"), int(attack.get("hits", 1))
+		if gs["hp"].get(actor, 0) <= 0 or gs["hp"].get(target, 0) <= 0: continue
+		
+		max_hits = int(gs["ap"].get(actor, 0)) // ATTACK_COST_AP
+		hits = min(requested, max_hits)
+		if hits > 0:
+			dmg = hits * 100
+			gs["ap"][actor] -= hits * ATTACK_COST_AP
+			gs["hp"][target] = max(0, int(gs["hp"][target]) - dmg)
+			
+			# Conquest: Steal 1 cell if hits >= 3
+			if hits >= 3:
+				t_cells = [i for i, c in enumerate(gs["grid"]) if c == target]
+				if t_cells:
+					cell = random.choice(t_cells)
+					gs["grid"][cell] = actor
+					push_ev("ATTACK", f"CONQUEST: {actor} seized cell {cell} from {target}!", actor)
+			push_ev("ATTACK", f"STRIKE: {actor} hit {target} x{hits} (-{dmg} HP).", actor)
 
-    save_gs(gs)
-    return gs
+	# 4. Eliminations
+	for t, hp in list(gs["hp"].items()):
+		if hp <= 0:
+			for i in range(len(gs["grid"])):
+				if gs["grid"][i] == t: gs["grid"][i] = ""
+
+	# 5. Economy: +50 AP per cell
+	for t in gs["hp"]:
+		if gs["hp"].get(t, 0) > 0:
+			terr = gs["grid"].count(t)
+			ap_gain = terr * 50
+			gs["ap"][t] = int(gs["ap"].get(t, 0)) + ap_gain
+			if ap_gain > 0: push_ev("SYS", f"{t} income: +{ap_gain} AP.", t)
+
+	gs["shadow_task_ap"] = {}
+	save_gs(gs)
+	return gs
+
+def expand_territory(gs, team):
+	"""Instant action from our previous build (150 AP)."""
+	from config import get_amoeba_adjacency
+	adj = get_amoeba_adjacency(len(gs["grid"]))
+	my_cells = [i for i, owner in enumerate(gs["grid"]) if owner == team]
+	candidates = set()
+	for c in my_cells:
+		candidates.update([n for n in adj.get(c, []) if gs["grid"][n] == ""])
+	if not candidates or int(gs["ap"].get(team, 0)) < 150: return False, "Insufficient resources or space."
+	target = random.choice(list(candidates))
+	gs["grid"][target] = team
+	gs["ap"][team] -= 150
+	push_ev("ATTACK", f"EXPANSION: {team} claimed cell {target}.", team)
+	return True, f"Claimed cell {target}."
 
 def run_code_safe(code, timeout=5):
-    blocked = ["import os", "import sys", "subprocess", "open(", "exec(", "eval("]
-    for b in blocked:
-        if b in code: return "", f"[SECURITY] Blocked: {b}"
-    try:
-        res = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=timeout)
-        return res.stdout[:2000], res.stderr[:1000]
-    except subprocess.TimeoutExpired:
-        return "", "[TIMEOUT]"
-    except Exception as e:
-        return "", str(e)
+	blocked = ["import os", "import sys", "subprocess", "open(", "exec(", "eval("]
+	if any(b in code for b in blocked): return "", "[SECURITY] Blocked."
+	try:
+		res = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=timeout)
+		return res.stdout[:2000], res.stderr[:1000]
+	except Exception as e: return "", str(e)
+
+def run_bot_task(task_id, user_code, team, gs):
+	from config import BOT_TASKS
+	if task_id not in BOT_TASKS: return False, "Not found."
+	task = BOT_TASKS[task_id]
+	
+	now = time.time()
+	last = gs.setdefault("bot_solve_time", {}).get(team, 0)
+	if now - last < 30: return False, f"Cooldown: {30-int(now-last)}s"
+	
+	full_code = user_code + "\n" + task["test_harness"]
+	stdout, stderr = run_code_safe(full_code)
+	if stderr: return False, f"Logic error: {stderr[:80]}"
+	
+	try:
+		exec_globals = {}
+		exec(full_code, exec_globals)
+		val = exec_globals.get("verify_val")
+		expected = task["expected_output"]
+		if (isinstance(expected, float) and abs(val-expected)<0.01) or (val == expected):
+			gs["bot_solve_time"][team] = now
+			gs.setdefault("task_done_by_team", {}).setdefault(team, {})[task_id] = datetime.utcnow().isoformat()
+			return True, f"VALIDATED: {task['verify_token']}"
+		return False, f"Wrong answer. Got {val}"
+	except Exception as e: return False, str(e)
