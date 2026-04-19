@@ -152,8 +152,21 @@ def render_d3_map(gs, teams, MT):
 
                 g.selectAll("text").data(points).join("text")
                     .attr("x", d=>d[0]).attr("y", d=>d[1]).attr("dy","0.35em").attr("text-anchor","middle")
-                    .attr("fill","rgba(255,255,255,0.4)").style("font-size","9px").style("pointer-events","none")
-                    .text((d,i)=>i);
+                    .attr("fill","rgba(255,255,255,0.7)")
+                    .style("font-family","Orbitron, sans-serif")
+                    .style("font-size","8px")
+                    .style("font-weight","bold")
+                    .style("pointer-events","none")
+                    .text((d,i)=>{
+                        const owner = grid[i];
+                        if(owner) return owner.substring(0,3).toUpperCase();
+                        return i;
+                    });
+                
+                // Add unique glow to player's kingdom
+                g.selectAll("path")
+                    .filter((d, i) => grid[i] === "{MT}")
+                    .attr("filter", "drop-shadow(0 0 8px rgba(0,229,255,0.6))");
 
                 svg.call(d3.zoom().scaleExtent([1, 4]).on("zoom", e => g.attr("transform", e.transform)));
             }} catch(err) {{
@@ -198,50 +211,31 @@ def show_war_room():
     # SIDEBAR
     with st.sidebar:
         st.markdown(f"""
-        <div style="padding:1rem 0; border-bottom:1px solid var(--border); margin-bottom:1.5rem">
-            <div style="font-family:Orbitron; font-size:1.4rem; font-weight:900; letter-spacing:8px; color:var(--gold)">OVERTHRONE</div>
-            <div style="font-family:Share Tech Mono; font-size:0.6rem; letter-spacing:4px; color:var(--dim)">HELIX x ISTE · WAR ROOM OS v5.0</div>
+        <div style="padding:1rem 0; text-align:center; border-bottom:1px solid rgba(212,175,55,0.2); margin-bottom:1rem">
+            <div style="font-family:Orbitron; font-size:1.1rem; font-weight:900; letter-spacing:4px; color:var(--gold)">OVERTHRONE</div>
+            <div style="font-family:Share Tech Mono; font-size:0.55rem; letter-spacing:3px; color:var(--dim)">WAR ROOM OS v5.0</div>
         </div>
         """, unsafe_allow_html=True)
         
-        # SECTOR 1: IDENTITY
         st.markdown('<div class="sb-title">SOVEREIGN IDENTITY</div>', unsafe_allow_html=True)
         st.markdown(f'<div class="sb-row"><span class="sb-lbl">USER</span><span class="sb-val" style="color:var(--red)">{dn}</span></div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="sb-row"><span class="sb-lbl">TEAM</span><span class="sb-val" style="color:var(--gold)">{MT}</span></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="sb-row"><span class="sb-lbl">KINGDOM</span><span class="sb-val" style="color:var(--gold)">{MT}</span></div>', unsafe_allow_html=True)
 
-        # SECTOR 2: ROSTER
-        st.markdown('<div class="sb-title" style="margin-top:1.5rem">TEAM ROSTER</div>', unsafe_allow_html=True)
-        members = teams.get(MT, {}).get("members", [])
-        if members:
-            m_html = "".join([f'<span class="member-pill">{m}</span>' for m in members])
-            st.markdown(f'<div style="margin-bottom:1rem">{m_html}</div>', unsafe_allow_html=True)
-        else:
-            st.markdown('<div class="sb-val" style="opacity:0.5">ALONE</div>', unsafe_allow_html=True)
-
-        # SECTOR 3: BIOMETRICS
         my_hp, my_ap = int(gs["hp"].get(MT, 0)), _visible_ap(gs, MT)
         my_terr = gs["grid"].count(MT)
-        hp_pct = max(0, min(100, (my_hp / STARTING_HP) * 100))
-        ap_pct = max(0, min(100, (my_ap / 2000) * 100)) # assumption for bar
+        st.markdown('<div class="sb-title">BIOMETRICS · LIVE</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="sb-row"><span class="sb-lbl">HEALTH</span><span class="sb-val" style="color:var(--red)">{my_hp:,} HP</span></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="sb-row"><span class="sb-lbl">RESOURCES</span><span class="sb-val" style="color:var(--cyan)">{my_ap:,} AP</span></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="sb-row"><span class="sb-lbl">AREA</span><span class="sb-val" style="color:var(--gold)">{my_terr} cells</span></div>', unsafe_allow_html=True)
 
-        st.markdown('<div class="sb-title" style="margin-top:1.5rem">BIOMETRICS · LIVE</div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="sb-row"><span class="sb-lbl">HEALTH POINTS</span><span class="sb-val" style="color:var(--red)">{my_hp:,}</span></div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="mini-bar"><div class="mini-bar-f" style="width:{hp_pct}%; background:var(--red)"></div></div>', unsafe_allow_html=True)
-        
-        st.markdown(f'<div class="sb-row" style="margin-top:0.8rem"><span class="sb-lbl">ATTACK POINTS</span><span class="sb-val" style="color:var(--cyan)">{my_ap:,}</span></div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="mini-bar"><div class="mini-bar-f" style="width:{ap_pct}%; background:var(--cyan)"></div></div>', unsafe_allow_html=True)
-        
-        st.markdown(f'<div class="sb-row" style="margin-top:0.8rem"><span class="sb-lbl">TERRITORY</span><span class="sb-val" style="color:var(--gold)">{my_terr} / 30 cells</span></div>', unsafe_allow_html=True)
-
-        # SECTOR 4: EPOCH STATUS
-        st.markdown('<div class="sb-title" style="margin-top:1.5rem">EPOCH STATUS</div>', unsafe_allow_html=True)
+        st.markdown('<div class="sb-title">CHRONOS SYNC</div>', unsafe_allow_html=True)
         st.markdown(f'<div class="sb-row"><span class="sb-lbl">EPOCH</span><span class="sb-val">{gs["epoch"]}</span></div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="sb-row"><span class="sb-lbl">REMAINING</span><span class="sb-val" id="ot-live-timer-sb" style="color:var(--red)">--:--</span></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="sb-row"><span class="sb-lbl">REMAINING</span><span class="sb-val" id="ot-live-timer" style="color:var(--gold)">--:--</span></div>', unsafe_allow_html=True)
 
-        # SECTOR 5: NETWORK
-        st.markdown('<div class="sb-title" style="margin-top:1.5rem">NETWORK</div>', unsafe_allow_html=True)
+        st.markdown('<div style="padding:1rem">', unsafe_allow_html=True)
         if st.button("LOGOUT / RECONNECT", use_container_width=True):
             st.session_state.logged_in = False; st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
 
     # WIN CINEMATIC
     if gs.get("game_over"):
@@ -257,51 +251,16 @@ def show_war_room():
     # HEADER
     st.markdown(f"""
     <div class="ot-hdr">
-        <div>
-            <div class="ot-logo">OVERTHRONE</div>
-            <div class="ot-subtitle">HELIX x ISTE · THE ULTIMATE KINGDOM SIMULATION</div>
-        </div>
-        <div style="display:flex; align-items:center; gap:3rem;">
-            <div class="ot-epoch-box">
-                <div class="ot-epoch-num">EPOCH {gs["epoch"]}</div>
-                <div class="ot-epoch-phase">MOBILIZATION</div>
-            </div>
-            <div id="ot-live-timer" style="font-family:'Orbitron'; font-size:2.5rem; font-weight:900; color:var(--red); letter-spacing:4px; text-shadow:0 0 20px rgba(255,34,68,0.3);">00:00</div>
+        <div><div class="ot-logo">OVERTHRONE</div><div class="ot-subtitle">HELIX x ISTE · KINGDOM SIMULATION</div></div>
+        <div class="ot-epoch-box">
+            <div class="ot-epoch-num">EPOCH {gs["epoch"]}</div>
+            <div class="ot-epoch-phase">MOBILIZATION</div>
         </div>
     </div>
     <div class="ot-tbar"><div class="ot-tbar-fill" id="ot-live-bar" style="width:100%"></div></div>
     """, unsafe_allow_html=True)
     
-    # Live timer sync helper with dual target
-    components.html(f"""
-        <script>
-            const END_MS = Date.parse("{gs["epoch_end"]}");
-            const DURATION = {EPOCH_DURATION_SECS};
-            const parent = window.parent;
-            const doc = parent.document;
-
-            function tick() {{
-                const tMain = doc.getElementById('ot-live-timer');
-                const tSide = doc.getElementById('ot-live-timer-sb');
-                const barVal = doc.getElementById('ot-live-bar');
-                if(!tMain || !barVal) return;
-
-                const rem = Math.max(0, Math.floor((END_MS - Date.now()) / 1000));
-                const m = String(Math.floor(rem/60)).padStart(2,'0');
-                const s = String(rem%60).padStart(2,'0');
-                const final = m + ":" + s;
-                
-                tMain.textContent = final;
-                if(tSide) tSide.textContent = final;
-                
-                const pct = (rem / DURATION) * 100;
-                barVal.style.width = pct.toFixed(1) + "%";
-            }}
-            if(parent.__otTimer) clearInterval(parent.__otTimer);
-            tick();
-            parent.__otTimer = setInterval(tick, 1000);
-        </script>
-    """, height=0)
+    _mount_live_timer_sync(gs)
 
     # TABS
     tab_names = ["HOME", "TASKS (HUMAN)", "TASKS (BOT)", "STRATEGY DECK", "LEADERBOARD"]
@@ -340,57 +299,32 @@ def show_war_room():
         st.markdown('<div class="sec-lbl">🧠 HUMAN INTELLIGENCE · MONARCH CTF</div>', unsafe_allow_html=True)
         solved = gs.get("task_done_by_user", {}).get(username, {})
         
-        # MODAL OVERLAY LOGIC
-        if st.session_state.get("active_task_id"):
-            tid = st.session_state.active_task_id
-            task = next(t for t in TASKS["monarch"] if t["id"] == tid)
-            
-            st.markdown(f"""
-            <div class="modal-overlay">
-                <div class="modal-card">
-                    <div class="modal-title">{task['title']}</div>
-                    <div class="modal-desc">{task['desc']}</div>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            # Form inside columns to overlay correctly
-            with st.container():
-                st.markdown('<div style="position:fixed; top:50%; left:50%; transform:translate(-50%, -10%); width:600px; z-index:100000; padding:20px;">', unsafe_allow_html=True)
-                ans = st.text_input("YOUR SIGNAL", key="modal_ans", placeholder="Enter decryption key...")
-                m_c1, m_c2 = st.columns(2)
-                with m_c1:
-                    if st.button("AUTHENTICATE", use_container_width=True):
-                        if _normalize_answer(ans) == _normalize_answer(MONARCH_TASK_PORTAL[task["id"]]["answer"]):
-                            gs = load_gs()
-                            gs.setdefault("task_done_by_user", {}).setdefault(username, {})[task["id"]] = datetime.utcnow().isoformat()
-                            gs["ap"][MT] = int(gs["ap"].get(MT, 0)) + task["pts"]
-                            save_gs(gs); st.success("ACCESS GRANTED"); 
-                            st.session_state.active_task_id = None; st.rerun()
-                        else: st.error("SIGNAL REJECTED")
-                with m_c2:
-                    if st.button("ABORT MISSION", use_container_width=True):
-                        st.session_state.active_task_id = None; st.rerun()
-                st.markdown('</div>', unsafe_allow_html=True)
-
-        # GRID VIEW
         cols = st.columns(2)
         for i, task in enumerate(TASKS["monarch"]):
             is_done = task["id"] in solved
             dc = DIFF_COLOR.get(task["diff"], "cyan")
             with cols[i % 2]:
+                link_html = f'<div style="margin-top:10px;"><a href="{task["link"]}" target="_blank" style="color:var(--gold); text-decoration:none; font-size:0.75rem; border:1px solid var(--gold); padding:4px 10px; border-radius:4px;">📥 DOWNLOAD ATTACHMENT</a></div>' if "link" in task else ""
                 st.markdown(f"""
                 <div class="tc" style="border-top:2px solid {dc}44">
                     <div class="tc-title">{task["title"]}</div>
                     <div class="tc-desc">{task["desc"]}</div>
+                    {link_html}
                     <div class="tc-pts">+{task["pts"]} AP</div>
                 </div>
                 """, unsafe_allow_html=True)
+                
                 if is_done: 
                     st.success("SECURED")
                 else:
-                    if st.button(f"ATTEMPT +{task['pts']} AP", key=f"btn_{task['id']}", use_container_width=True):
-                        st.session_state.active_task_id = task["id"]; st.rerun()
+                    ans = st.text_input(f"Signal for {task['id']}", key=f"ans_{task['id']}", label_visibility="collapsed", placeholder="Enter decryption key...")
+                    if st.button(f"AUTHENTICATE {task['id']}", key=f"btn_{task['id']}", use_container_width=True):
+                        if _normalize_answer(ans) == _normalize_answer(MONARCH_TASK_PORTAL[task["id"]]["answer"]):
+                            gs = load_gs()
+                            gs.setdefault("task_done_by_user", {}).setdefault(username, {})[task["id"]] = datetime.utcnow().isoformat()
+                            gs["ap"][MT] = int(gs["ap"].get(MT, 0)) + task["pts"]
+                            save_gs(gs); st.success("ACCESS GRANTED"); st.rerun()
+                        else: st.error("SIGNAL REJECTED")
 
     # ─────────────────────────────────────────────────────────────
     # TASKS (BOT)
