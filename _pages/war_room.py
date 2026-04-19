@@ -83,62 +83,59 @@ def render_d3_map(gs, teams, MT):
     d3_html = f"""
     <div id="ot-map-status" style="position:absolute; top:10px; left:10px; color:#FF2244; font-family:monospace; font-size:12px; z-index:1000;"></div>
     <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
-    <style>
-        body {{ margin:0; background:transparent; overflow:hidden; }}
-        #map-container {{ width:100%; height:500px; position:relative; }}
-        .cell {{ stroke-width:1.5px; transition:0.3s; cursor:pointer; }}
-        .cell:hover {{ stroke:#fff; stroke-width:3px; opacity:0.8; }}
-        #tooltip {{
-            position:absolute; background:rgba(2,10,15,0.95); border:1px solid #D4AF37;
-            padding:12px; color:#fff; font-family:'Share Tech Mono', monospace; 
-            pointer-events:none; opacity:0; border-radius:4px; z-index:100;
-        }}
-        #d3-anchor svg {{ width:100%; height:500px; display:block; }}
-    </style>
-    <div id="map-container">
-        <div id="tooltip"></div>
-        <div id="d3-anchor"></div>
+    <div id="ot-map-container" style="background:#02050a; border:1px solid rgba(0,229,255,0.2); border-radius:8px; overflow:hidden; position:relative; width:100%; height:550px;">
+        <div id="tooltip" style="position:fixed; background:rgba(0,5,15,0.95); border:1px solid var(--gold); padding:8px; color:white; font-family:'Share Tech Mono'; font-size:12px; pointer-events:none; opacity:0; z-index:9999; border-radius:4px;"></div>
+        <div id="ot-map-status" style="position:absolute; top:5px; left:5px; font-family:'Share Tech Mono'; font-size:10px; color:#555;">MAP_SYNC_ACTIVE</div>
+        <div id="d3-map" style="width:100%; height:100%;"></div>
     </div>
+
+    <script src="https://d3js.org/d3.v7.min.js"></script>
     <script>
         (function() {{
             try {{
-                const status = document.getElementById('ot-map-status');
-                const width = 600, height = 500;
+                const width = 700;
+                const height = 550;
                 const grid = {grid_json};
-                const colors = {team_colors};
-                const strokes = {team_strokes};
                 const meta = {meta_json};
                 
-                const svg = d3.select("#d3-anchor").append("svg").attr("viewBox", "0 0 600 500");
-                const g = svg.append("g");
+                const svg = d3.select("#d3-map").append("svg")
+                    .attr("viewBox", `0 0 ${{width}} ${{height}}`)
+                    .attr("preserveAspectRatio", "xMidYMid meet")
+                    .style("width", "100%")
+                    .style("height", "100%");
 
-                // Generate 30 points using the exact Fibonacci spiral from config
                 const n = 30;
                 const points = [];
-                const phi = (1 + Math.sqrt(5)) / 2;
+                // Organic spiral distribution
                 for(let i=0; i<n; i++) {{
-                    const r = 180 * Math.sqrt((i + 0.5) / n);
-                    const theta = 2 * Math.PI * i / phi;
-                    points.push([300 + r * Math.cos(theta), 250 + r * Math.sin(theta)]);
+                    const r = 210 * Math.sqrt((i + 0.5) / n);
+                    const theta = i * Math.PI * (3 - Math.sqrt(5));
+                    points.push([width/2 + r * Math.cos(theta), height/2 + r * Math.sin(theta)]);
                 }}
 
-                if (points.length === 0) throw new Error("No points generated");
-
                 const delaunay = d3.Delaunay.from(points);
-                const voronoi = delaunay.voronoi([0, 0, 600, 500]);
+                const voronoi = delaunay.voronoi([0, 0, width, height]);
+                const g = svg.append("g");
 
-                g.selectAll("path")
-                    .data(points.map((_, i) => i))
-                    .join("path")
-                    .attr("class", "cell")
-                    .attr("d", i => voronoi.renderCell(i))
-                    .attr("fill", i => colors[grid[i]] || "#0a1a0e")
-                    .attr("stroke", i => strokes[grid[i]] || "#1a3a1a")
-                    .on("mouseover", (e, i) => {{
+                const cells = g.selectAll("path").data(points).join("path")
+                    .attr("d", (d, i) => voronoi.renderCell(i))
+                    .attr("fill", (d, i) => {{
                         const owner = grid[i];
-                        let html = `<div style="color:#D4AF37;font-weight:bold;margin-bottom:5px">CELL ${{i}}</div>`;
+                        return owner ? (meta[owner]?.color + "22") : "#0a0a15";
+                    }})
+                    .attr("stroke", (d, i) => {{
+                        const owner = grid[i];
+                        return owner ? meta[owner]?.color : "#151525";
+                    }})
+                    .attr("stroke-width", 1.5)
+                    .attr("style", "cursor:crosshair; transition: all 0.2s;")
+                    .on("mouseover", function(e, d) {{
+                        const i = points.indexOf(d);
+                        const owner = grid[i];
+                        d3.select(this).attr("fill", owner ? meta[owner]?.color + "66" : "#252535").attr("stroke-width", 3);
+                        let html = `<div style="font-family:Orbitron; border-bottom:1px solid #333; margin-bottom:4px; color:#D4AF37">CELL ${{i}}</div>`;
                         if(owner && meta[owner]) {{
-                            html += `<div style="color:#00E5FF">${{owner}}</div>`;
+                            html += `<div style="color:#00E5FF; font-weight:bold">${{owner}}</div>`;
                             html += `HP: ${{meta[owner].hp}}<br>AP: ${{meta[owner].ap}}`;
                         }} else if(owner) {{
                             html += `<div style="color:#00E5FF">${{owner}}</div><div style="font-size:10px;color:#888">Outpost established</div>`;
@@ -146,15 +143,21 @@ def render_d3_map(gs, teams, MT):
                         d3.select("#tooltip").html(html).style("opacity", 1);
                     }})
                     .on("mousemove", e => {{
-                        d3.select("#tooltip").style("left", (e.pageX+15)+"px").style("top", (e.pageY-20)+"px");
+                        d3.select("#tooltip").style("left", (e.clientX + 15) + "px").style("top", (e.clientY - 20) + "px");
                     }})
-                    .on("mouseout", () => d3.select("#tooltip").style("opacity", 0));
+                    .on("mouseout", function() {{
+                        const i = points.indexOf(this.__data__);
+                        const owner = grid[i];
+                        d3.select(this).attr("fill", owner ? meta[owner]?.color + "22" : "#0a0a15").attr("stroke-width", 1.5);
+                        d3.select("#tooltip").style("opacity", 0);
+                    }});
 
+                // Tactical Team Labels
                 g.selectAll("text").data(points).join("text")
                     .attr("x", d=>d[0]).attr("y", d=>d[1]).attr("dy","0.35em").attr("text-anchor","middle")
                     .attr("fill","rgba(255,255,255,0.7)")
-                    .style("font-family","Orbitron, sans-serif")
-                    .style("font-size","8px")
+                    .style("font-family","'Share Tech Mono', monospace")
+                    .style("font-size","10px")
                     .style("font-weight","bold")
                     .style("pointer-events","none")
                     .text((d,i)=>{{
@@ -163,20 +166,20 @@ def render_d3_map(gs, teams, MT):
                         return i;
                     }});
                 
-                // Add unique glow to player's kingdom
+                // Territory Glow for Player
                 g.selectAll("path")
                     .filter((d, i) => grid[i] === "{MT}")
-                    .attr("filter", "drop-shadow(0 0 8px rgba(0,229,255,0.6))");
+                    .attr("filter", "drop-shadow(0 0 10px rgba(0,229,255,0.7))")
+                    .attr("stroke-width", 2.5);
 
                 svg.call(d3.zoom().scaleExtent([1, 4]).on("zoom", e => g.attr("transform", e.transform)));
             }} catch(err) {{
-                document.getElementById('ot-map-status').textContent = "MAP_INIT_ERROR: " + err.message;
-                console.error(err);
+                document.getElementById('ot-map-status').textContent = "MAP_SYNC_ERR: " + err.message;
             }}
-        }})();
+        )();
     </script>
     """
-    components.html(d3_html, height=520)
+    components.html(d3_html, height=560)
 
 # -- MAIN DASHBOARD -------------------------------------------
 def show_war_room():
@@ -211,35 +214,38 @@ def show_war_room():
     # SIDEBAR
     with st.sidebar:
         st.markdown(f"""
-        <div style="padding:1rem 0; text-align:center; border-bottom:1px solid rgba(212,175,55,0.2); margin-bottom:1rem">
-            <div style="font-family:Orbitron; font-size:1.1rem; font-weight:900; letter-spacing:4px; color:var(--gold)">OVERTHRONE</div>
-            <div style="font-family:Share Tech Mono; font-size:0.55rem; letter-spacing:3px; color:var(--dim)">WAR ROOM OS v5.0</div>
+        <div style="padding:1rem 0; text-align:center; border-bottom:1px solid rgba(212,175,55,0.2); margin-bottom:1.2rem">
+            <div style="font-family:Orbitron; font-size:1.15rem; font-weight:900; letter-spacing:5px; color:var(--gold)">OVERTHRONE</div>
+            <div style="font-family:Share Tech Mono; font-size:0.58rem; letter-spacing:4px; color:var(--dim); margin-top:2px">WAR ROOM OS v5.0</div>
         </div>
         """, unsafe_allow_html=True)
         
-        st.markdown('<div class="sb-title">SOVEREIGN IDENTITY</div>', unsafe_allow_html=True)
+        # Sector 1: Identity
+        st.markdown('<div class="sb-title" style="color:var(--goldb)">SOVEREIGN IDENTITY</div>', unsafe_allow_html=True)
         st.markdown(f'<div class="sb-row"><span class="sb-lbl">USER</span><span class="sb-val" style="color:var(--red)">{dn}</span></div>', unsafe_allow_html=True)
         st.markdown(f'<div class="sb-row"><span class="sb-lbl">KINGDOM</span><span class="sb-val" style="color:var(--gold)">{MT}</span></div>', unsafe_allow_html=True)
 
+        # Sector 2: Biometrics
         my_hp, my_ap = int(gs["hp"].get(MT, 0)), _visible_ap(gs, MT)
         my_terr = gs["grid"].count(MT)
         hp_pct = max(0, min(100, (my_hp / STARTING_HP) * 100))
         ap_pct = max(0, min(100, (my_ap / 2000) * 100))
 
-        st.markdown('<div class="sb-title">BIOMETRICS · LIVE</div>', unsafe_allow_html=True)
+        st.markdown('<div class="sb-title" style="margin-top:1.5rem">BIOMETRICS · LIVE</div>', unsafe_allow_html=True)
         st.markdown(f'<div class="sb-row"><span class="sb-lbl">HEALTH</span><span class="sb-val" style="color:var(--red)">{my_hp:,} HP</span></div>', unsafe_allow_html=True)
         st.markdown(f'<div class="mini-bar"><div class="mini-bar-f" style="width:{hp_pct}%; background:var(--red); box-shadow:0 0 10px var(--red)"></div></div>', unsafe_allow_html=True)
         
-        st.markdown(f'<div class="sb-row" style="margin-top:0.8rem"><span class="sb-lbl">RESOURCES</span><span class="sb-val" style="color:var(--cyan)">{my_ap:,} AP</span></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="sb-row" style="margin-top:0.9rem"><span class="sb-lbl">RESOURCES</span><span class="sb-val" style="color:var(--cyan)">{my_ap:,} AP</span></div>', unsafe_allow_html=True)
         st.markdown(f'<div class="mini-bar"><div class="mini-bar-f" style="width:{ap_pct}%; background:var(--cyan); box-shadow:0 0 10px var(--cyan)"></div></div>', unsafe_allow_html=True)
         
-        st.markdown(f'<div class="sb-row" style="margin-top:0.8rem"><span class="sb-lbl">AREA</span><span class="sb-val" style="color:var(--gold)">{my_terr} cells</span></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="sb-row" style="margin-top:0.9rem"><span class="sb-lbl">AREA</span><span class="sb-val" style="color:var(--gold)">{my_terr} cells</span></div>', unsafe_allow_html=True)
 
-        st.markdown('<div class="sb-title">CHRONOS SYNC</div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="sb-row"><span class="sb-lbl">EPOCH</span><span class="sb-val">{gs["epoch"]}</span></div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="sb-row"><span class="sb-lbl">REMAINING</span><span class="sb-val" id="ot-live-timer" style="color:var(--gold)">--:--</span></div>', unsafe_allow_html=True)
+        # Sector 3: Chronos
+        st.markdown('<div class="sb-title" style="margin-top:1.5rem">CHRONOS SYNC</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="sb-row"><span class="sb-lbl">EPOCH</span><span class="sb-val" style="color:var(--gold)">{gs["epoch"]}</span></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="sb-row" style="margin-top:0.5rem"><span class="sb-lbl">REMAINING</span><div id="ot-live-timer" style="font-family:Orbitron; font-size:1.4rem; color:var(--gold); font-weight:700">--:--</div></div>', unsafe_allow_html=True)
 
-        st.markdown('<div style="padding:1rem">', unsafe_allow_html=True)
+        st.markdown('<div style="margin-top:2rem; padding:0 0.5rem">', unsafe_allow_html=True)
         if st.button("LOGOUT / RECONNECT", use_container_width=True):
             st.session_state.logged_in = False; st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
