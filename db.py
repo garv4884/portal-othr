@@ -187,15 +187,17 @@ def _init_state():
         "grid": grid,
         "hp":   {},
         "ap":   {},
+        "shadow_ap": {}, # Secret AP hidden until rollover
         "epoch": 1,
         "phase": "MOBILIZATION",
         "epoch_end": (datetime.utcnow() + timedelta(seconds=EPOCH_DURATION_SECS)).isoformat(),
-        "bypassed": {}, # Tracks which teams bypassed the bot this epoch
+        "bypassed": {},
         "bots": {},
         "alliances": {},
         "alliance_reqs": {},
         "queued_actions": {},
-        "ctf_solved": {}
+        "ctf_solved": {}, # {team_id: [task_ids]}
+        "team_task_cooldown": {} # {team_id: end_ts}
     }
 
 def load_gs():
@@ -248,6 +250,47 @@ def check_admin_auth(attempt_pw):
 def push_ev(kind, msg, team=None):
     ev = {"ts": datetime.utcnow().strftime("%H:%M:%S"), "kind": kind, "msg": msg, "team": team}
     R.lpush("ot:events", json.dumps(ev))
+
+# ── LOGIC HELPERS ──────────────────────────────────────────────
+def _active_backstabber_for_team(gs, target_team):
+    """Checks if anyone is backstabbing 'target_team' this epoch."""
+    queued = gs.get("queued_actions", {})
+    for actor, action in queued.items():
+        if action.get("action") == "BACKSTAB" and action.get("target") == target_team:
+            if int(gs["hp"].get(actor, 0)) > 0:
+                return actor
+    return None
+
+def apply_task_rewards(gs, team, pts, title):
+    """
+    Award points with Alliance sharing and Backstab stealing.
+    - If solver is backstabbed: Backstabber steals 2x, solver gets Shadow AP.
+    - Else: Solver gets pts, Allies get pts.
+    """
+    betrayer = _active_backstabber_for_team(gs, team)
+    if betrayer:
+        gs["ap"][betrayer] = int(gs["ap"].get(betrayer, 0)) + (pts * 2)
+        gs.setdefault("shadow_ap", {})[team] = int(gs.get("shadow_ap", {}).get(team, 0)) + pts
+        push_ev("TASK", f"Team {team} solved '{title}' (+{pts} SHADOW AP). Points hijacked by traitor!", team)
+        return
+
+    gs["ap"][team] = int(gs["ap"].get(team, 0)) + pts
+    alliances = gs.get("alliances", {}).get(team, [])
+    for ally in alliances:
+        if int(gs["hp"].get(ally, 0)) > 0:
+            gs["ap"][ally] = int(gs["ap"].get(ally, 0)) + pts
+    
+    push_ev("TASK", f"Team {team} solved '{title}' (+{pts} AP). Allies shared rewards.", team)
+
+def mark_team_task_done(gs, team, task_id):
+    solved = gs.setdefault("ctf_solved", {})
+    if team not in solved: solved[team] = []
+    if task_id not in solved[team]: solved[team].append(task_id)
+
+def team_task_cd_remaining(gs, team):
+    cd_map = gs.get("team_task_cooldown", {})
+    end_ts = float(cd_map.get(team, 0))
+    return max(0.0, end_ts - time.time())
     R.ltrim("ot:events", 0, 199)
 
 def load_evs(limit=30):
@@ -367,9 +410,19 @@ def simulate_epoch(gs):
     queued = gs.get("queued_actions", {})
     gs["queued_actions"] = {}
     
-    # 0. Global Economy: Passive AP Regen
+    # 0. Economic Rollover
+    # - Converge Shadow AP -> Real AP
+    # - Passive AP Regen
+    shadows = gs.get("shadow_ap", {})
+    for t, amt in shadows.items():
+        gs["ap"][t] = int(gs["ap"].get(t, 0)) + amt
+    gs["shadow_ap"] = {}
+
     for t in teams:
-        gs["ap"][t] = int(gs["ap"].get(t, 0)) + 100
+        gs["ap"][t] = int(gs["ap"].get(t, 0)) + 150 # Passive tick
+    
+    # - Clear old cooldowns
+    gs["team_task_cooldown"] = {} # Full reset every epoch
 
     # 1. Resolve Suspicions
     for actor, action in list(queued.items()):

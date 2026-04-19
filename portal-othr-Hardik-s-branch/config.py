@@ -5,9 +5,9 @@ Grid map configurations and constants.
 
 STARTING_HP = 5000
 STARTING_AP = 1200
-EPOCH_DURATION_SECS = 900  # 15 minutes
+EPOCH_DURATION_SECS = 300  # 5 minutes
 ATTACK_COST_AP = 500
-TASK_COOLDOWN_SECS = 900
+TASK_COOLDOWN_SECS = 100
 TASK_FAIL_CHANCE = 0.15
 
 # Color Palettes
@@ -34,7 +34,6 @@ TERRAIN_SPECIAL = {15: "🪂", 44: "💊", 55: "🔫", 33: "🏥", 66: "💣"}
 
 TASKS = {
     "monarch": [
-        {"id":"m1","title":"Cipher of Seven Seals",    "diff":"EASY",   "pts":500,  "desc":"Decode a Caesar-13 shift applied to the royal decree.", "link":"https://www.google.com/search?q=caesar+cipher", "flag":"HELIX{C4ES4R}"},
         {"id":"m1","title":"Cipher of Seven Seals",    "diff":"EASY",   "pts":500,  "desc":"Decode a Caesar-13 shift applied to the royal decree."},
         {"id":"m2","title":"The Merchant's Paradox",   "diff":"MEDIUM", "pts":750,  "desc":"Solve the riddle: which merchant owes the crown gold?"},
         {"id":"m3","title":"Labyrinth of Mirrors",     "diff":"MEDIUM", "pts":750,  "desc":"Navigate the logic grid — only one path leads to the throne."},
@@ -83,8 +82,7 @@ def generate_amoeba_points(n=30, width=600, height=500):
     points = []
     phi = (1 + math.sqrt(5)) / 2
     for i in range(n):
-        # Phyllotaxis Spiral (matches D3 frontend logic)
-        r = 180 * math.sqrt((i + 0.5) / n)
+        r = 200 * math.sqrt((i + 0.5) / n)
         theta = 2 * math.pi * i / phi
         noiseX = math.sin(i * 123) * 15
         noiseY = math.cos(i * 321) * 15
@@ -94,21 +92,12 @@ def generate_amoeba_points(n=30, width=600, height=500):
     return points
 
 def get_amoeba_adjacency(n=30):
-    """Dynamically generates a nearest-neighbor mesh for n points."""
+    from scipy.spatial import Delaunay
     points = generate_amoeba_points(n)
-    adj = {i: [] for i in range(n)}
-    
-    for i in range(n):
-        x1, y1 = points[i]
-        dists = []
-        for j in range(n):
-            if i == j: continue
-            x2, y2 = points[j]
-            dists.append((j, (x1-x2)**2 + (y1-y2)**2))
-        
-        # Connect to 6 nearest neighbors for a robust organic mesh
-        dists.sort(key=lambda x: x[1])
-        for neighbor_idx, _ in dists[:6]: 
-            adj[i].append(neighbor_idx)
-            
-    return adj
+    tri = Delaunay(points)
+    adj = {i: set() for i in range(n)}
+    for simplex in tri.simplices:
+        adj[simplex[0]].update([simplex[1], simplex[2]])
+        adj[simplex[1]].update([simplex[0], simplex[2]])
+        adj[simplex[2]].update([simplex[0], simplex[1]])
+    return {k: list(v) for k, v in adj.items()}

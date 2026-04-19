@@ -1,0 +1,386 @@
+import hashlib
+import json
+import logging
+import os
+import subprocess
+import sys
+from datetime import datetime, timedelta
+
+import streamlit as st
+
+# Import config constants
+try:
+	from config import TEAM_PALETTE, EPOCH_DURATION_SECS, STARTING_HP, STARTING_AP
+except ImportError:
+	pass
+
+
+class InMemoryStore:
+	def __init__(self):
+		self._kv = {}
+
+	def get(self, key):
+		return self._kv.get(key)
+
+	def set(self, key, value, ex=None):
+		self._kv[key] = value
+		return True
+
+	def lpush(self, key, *values):
+		items = self._kv.get(key, [])
+		if not isinstance(items, list):
+			items = []
+		for value in values:
+			items.insert(0, value)
+		self._kv[key] = items
+		return len(items)
+
+	def lrange(self, key, start, end):
+		items = self._kv.get(key, [])
+		if not isinstance(items, list):
+			return []
+		stop = None if end == -1 else end + 1
+		return items[start:stop]
+
+	def delete(self, key):
+		self._kv.pop(key, None)
+		return True
+
+	def flushdb(self):
+		self._kv.clear()
+		return True
+
+	def ping(self):
+		return True
+
+
+class SupabaseStore:
+	def __init__(self, url: str, key: str, table: str = "ot_store"):
+		from supabase import create_client
+
+		self.client = create_client(url, key)
+		self.table = table
+
+	def _select_row(self, key: str):
+		return (
+			self.client.table(self.table)
+			.select("key,value")
+			.eq("key", key)
+			.limit(1)
+			.execute()
+		)
+
+	def get(self, key):
+		res = self._select_row(key)
+		data = res.data or []
+		if not data:
+			return None
+		return data[0].get("value")
+
+	def set(self, key, value, ex=None):
+		self.client.table(self.table).upsert({"key": key, "value": value}).execute()
+		return True
+
+	def lpush(self, key, *values):
+		items = self.get(key)
+		if not isinstance(items, list):
+			items = []
+		for value in values:
+			items.insert(0, value)
+		self.set(key, items)
+		return len(items)
+
+	def lrange(self, key, start, end):
+		items = self.get(key)
+		if not isinstance(items, list):
+			return []
+		stop = None if end == -1 else end + 1
+		return items[start:stop]
+
+	def delete(self, key):
+		self.client.table(self.table).delete().eq("key", key).execute()
+		return True
+
+	def flushdb(self):
+		self.client.table(self.table).delete().neq("key", "").execute()
+		return True
+
+	def ping(self):
+		self.client.table(self.table).select("key").limit(1).execute()
+		return True
+
+
+@st.cache_resource
+def get_store():
+	global SUPABASE_LAST_ERROR
+	global ACTIVE_DB_NAME
+	global ACTIVE_DB_TABLE
+	try:
+		url = st.secrets.get("SUPABASE_URL", os.getenv("SUPABASE_URL", ""))
+		key = st.secrets.get("SUPABASE_KEY", os.getenv("SUPABASE_KEY", ""))
+		table = st.secrets.get("SUPABASE_TABLE", os.getenv("SUPABASE_TABLE", "ot_store"))
+		if not url or not key:
+			raise ValueError("SUPABASE_URL/SUPABASE_KEY not configured")
+		store = SupabaseStore(url, key, table)
+		store.ping()
+		SUPABASE_LAST_ERROR = ""
+		ACTIVE_DB_NAME = "SUPABASE"
+		ACTIVE_DB_TABLE = table
+		return store, True
+	except Exception as exc:
+		SUPABASE_LAST_ERROR = str(exc)
+		ACTIVE_DB_NAME = "IN_MEMORY"
+		ACTIVE_DB_TABLE = ""
+		return InMemoryStore(), False
+
+
+SUPABASE_LAST_ERROR = ""
+ACTIVE_DB_NAME = "UNKNOWN"
+ACTIVE_DB_TABLE = ""
+R, supabase_live = get_store()
+# Backward-compatible flag used by UI labels.
+redis_live = supabase_live
+
+_LOG = logging.getLogger(__name__)
+if supabase_live:
+	msg = f"[DB] backend={ACTIVE_DB_NAME} table={ACTIVE_DB_TABLE}"
+	print(msg)
+	_LOG.info(msg)
+else:
+	msg = f"[DB] backend={ACTIVE_DB_NAME} fallback_reason={SUPABASE_LAST_ERROR}"
+	print(msg)
+	_LOG.warning(msg)
+
+
+# -- ACCOUNTS -------------------------------------------------
+def hash_pw(pw):
+	return hashlib.sha256(pw.encode()).hexdigest()
+
+
+def load_users():
+	raw = R.get("ot:users")
+	if raw:
+		try:
+			return json.loads(raw)
+		except Exception:
+			pass
+	return {}
+
+
+def save_users(users):
+	R.set("ot:users", json.dumps(users))
+
+
+def get_user(username):
+	return load_users().get(username)
+
+
+def register_user(username, password, display_name):
+	users = load_users()
+	if username in users:
+		return False, "Username exists."
+	users[username] = {
+		"pw_hash": hash_pw(password),
+		"display_name": display_name,
+		"team": None,
+		"created": datetime.utcnow().isoformat(),
+	}
+	save_users(users)
+	return True, "Account created"
+
+
+def login_user(username, password):
+	users = load_users()
+	if username not in users:
+		return False, "User not found."
+	if users[username]["pw_hash"] != hash_pw(password):
+		return False, "Wrong password."
+	return True, users[username]
+
+
+# -- DYNAMIC TEAMS -------------------------------------------
+def load_teams():
+	raw = R.get("ot:teams_meta")
+	if raw:
+		try:
+			return json.loads(raw)
+		except Exception:
+			pass
+	return {}
+
+
+def save_teams(teams):
+	R.set("ot:teams_meta", json.dumps(teams))
+
+
+def load_teams_meta():
+	return load_teams()
+
+
+def create_team(tname, username, join_code=""):
+	tname = tname.strip()
+	teams = load_teams()
+	users = load_users()
+	if len(teams) >= 30:
+		return False, "Maximum 30 teams allowed on the map."
+	if tname in teams:
+		return False, "Already exists."
+
+	old_team = users.get(username, {}).get("team")
+	if old_team and old_team in teams and username in teams[old_team]["members"]:
+		teams[old_team]["members"].remove(username)
+
+	idx = len(teams) % len(TEAM_PALETTE)
+	col = TEAM_PALETTE[idx]
+
+	teams[tname] = {
+		"creator": username,
+		"join_code": join_code,
+		"members": [username],
+		"created": datetime.utcnow().isoformat(),
+		"color": col["color"],
+		"bg": col["bg"],
+		"icon": col["icon"],
+	}
+	save_teams(teams)
+
+	users[username]["team"] = tname
+	save_users(users)
+
+	gs = load_gs()
+	if tname not in gs["hp"]:
+		gs["hp"][tname] = STARTING_HP
+		gs["ap"][tname] = STARTING_AP
+
+		empty_cells = [i for i, owner in enumerate(gs["grid"]) if not owner]
+		if empty_cells:
+			import random
+
+			assigned = random.choice(empty_cells)
+			gs["grid"][assigned] = tname
+
+		save_gs(gs)
+
+	return True, f"Created {tname}"
+
+
+def join_team(tname, username, join_code=""):
+	teams = load_teams()
+	users = load_users()
+	if tname not in teams:
+		return False, "Kingdom not found."
+	if str(teams[tname].get("join_code", "")) != str(join_code):
+		return False, "Incorrect Vault Password."
+	if username in teams[tname]["members"]:
+		return False, "Already joined."
+
+	old_team = users.get(username, {}).get("team")
+	if old_team and old_team in teams and username in teams[old_team]["members"]:
+		teams[old_team]["members"].remove(username)
+
+	teams[tname]["members"].append(username)
+	save_teams(teams)
+
+	users[username]["team"] = tname
+	save_users(users)
+	return True, f"Joined {tname}"
+
+
+# -- GAME STATE (GRID) ---------------------------------------
+def _init_state():
+	grid = [""] * 30
+	return {
+		"grid": grid,
+		"hp": {},
+		"ap": {},
+		"epoch": 1,
+		"phase": "MOBILIZATION",
+		"epoch_end": (datetime.utcnow() + timedelta(seconds=EPOCH_DURATION_SECS)).isoformat(),
+		"bypassed": {},
+		"bots": {},
+		"alliances": {},
+		"alliance_reqs": {},
+		"queued_actions": {},
+	}
+
+
+def load_gs():
+	raw = R.get("ot:state")
+	if raw:
+		try:
+			return json.loads(raw)
+		except Exception:
+			pass
+	state = _init_state()
+	save_gs(state)
+	return state
+
+
+def save_gs(state):
+	R.set("ot:state", json.dumps(state))
+
+
+def reset_gs():
+	R.delete("ot:state")
+
+
+def push_ev(kind, msg, team=None):
+	event = {"ts": datetime.utcnow().strftime("%H:%M:%S"), "kind": kind, "msg": msg, "team": team}
+	R.lpush("ot:events", json.dumps(event))
+
+
+def load_evs(limit=30):
+	res = R.lrange("ot:events", 0, limit - 1)
+	out = []
+	for item in res:
+		try:
+			out.append(json.loads(item))
+		except Exception:
+			pass
+	return out
+
+
+def terr_count(grid, dict_teams=None):
+	counts = {}
+	if dict_teams:
+		counts = {team: 0 for team in dict_teams}
+	counts[""] = 0
+	for cell in grid:
+		if cell not in counts:
+			counts[cell] = 0
+		counts[cell] += 1
+	return counts
+
+
+def simulate_epoch(gs):
+	# This project currently computes most epoch logic in the war_room page.
+	gs = dict(gs)
+	gs["epoch"] = int(gs.get("epoch", 0)) + 1
+	gs["epoch_end"] = (datetime.utcnow() + timedelta(seconds=EPOCH_DURATION_SECS)).isoformat()
+	return gs
+
+
+def run_code_safe(code: str, timeout: int = 5) -> tuple[str, str]:
+	blocked = [
+		"import os",
+		"import sys",
+		"import subprocess",
+		"open(",
+		"__import__",
+		"exec(",
+		"eval(",
+		"compile(",
+		"os.system",
+		"os.popen",
+		"shutil",
+	]
+	for item in blocked:
+		if item in code:
+			return "", f"[SECURITY] Blocked: '{item}'"
+	try:
+		res = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=timeout)
+		return res.stdout[:3000], res.stderr[:1000]
+	except subprocess.TimeoutExpired:
+		return "", "[TIMEOUT] "
+	except Exception as exc:
+		return "", str(exc)
