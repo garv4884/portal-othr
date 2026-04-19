@@ -310,8 +310,10 @@ def show_war_room():
     for i, tname in enumerate(tab_names):
         with t_cols[i]:
             active_cls = "active" if st.session_state.active_tab == tname else ""
+            st.markdown(f'<div class="nav-tab-btn {active_cls}">', unsafe_allow_html=True)
             if st.button(tname, key=f"nav_{tname}", use_container_width=True, help=f"Navigate to {tname}"):
                 st.session_state.active_tab = tname; st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
 
     active = st.session_state.active_tab
 
