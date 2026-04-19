@@ -255,6 +255,8 @@ def show_war_room():
         """, unsafe_allow_html=True)
         return
 
+    # HEADER
+    st.markdown(f"""
     <div class="ot-hdr">
         <div><div class="ot-logo">OVERTHRONE</div><div class="ot-subtitle">HELIX x ISTE · KINGDOM SIMULATION</div></div>
         <div class="ot-epoch-box">
