@@ -9,6 +9,7 @@ import random
 from datetime import datetime, timedelta
 
 import streamlit as st
+import redis
 
 # Import config constants
 try:
@@ -57,86 +58,28 @@ class InMemoryStore:
 	def ping(self):
 		return True
 
-class SupabaseStore:
-	def __init__(self, url: str, key: str, table: str = "ot_store"):
-		from supabase import create_client
-		self.client = create_client(url, key)
-		self.table = table
-		self._max_retries = 2
-		self._retry_delay = 0.5
-
-	def _retry_operation(self, operation_func, operation_name="operation"):
-		import time
-		last_error = None
-		for attempt in range(self._max_retries + 1):
-			try:
-				return operation_func()
-			except Exception as e:
-				last_error = e
-				if attempt < self._max_retries:
-					wait_time = self._retry_delay * (2 ** attempt)
-					time.sleep(wait_time)
-				else:
-					_LOG.error(f"[DB] {operation_name} failed: {str(e)[:100]}")
-		raise last_error
-
-	def get(self, key):
-		try:
-			res = (self.client.table(self.table).select("value").eq("key", key).limit(1).execute())
-			data = res.data or []
-			return data[0].get("value") if data else None
-		except Exception:
-			return None
-
-	def set(self, key, value, ex=None):
-		try:
-			self.client.table(self.table).upsert({"key": key, "value": value}).execute()
-			return True
-		except Exception:
-			return False
-
-	def lpush(self, key, *values):
-		items = self.get(key)
-		if not isinstance(items, list): items = []
-		for value in values: items.insert(0, value)
-		self.set(key, items)
-		return len(items)
-
-	def lrange(self, key, start, end):
-		items = self.get(key)
-		if not isinstance(items, list): return []
-		stop = None if end == -1 else end + 1
-		return items[start:stop]
-
-	def delete(self, key):
-		try:
-			self.client.table(self.table).delete().eq("key", key).execute()
-			return True
-		except Exception:
-			return False
-
-	def ping(self):
-		try:
-			self.client.table(self.table).select("key").limit(1).execute()
-			return True
-		except Exception:
-			return False
-
 @st.cache_resource
 def get_store():
 	try:
-		url = st.secrets.get("SUPABASE_URL", os.getenv("SUPABASE_URL", ""))
-		key = st.secrets.get("SUPABASE_KEY", os.getenv("SUPABASE_KEY", ""))
-		table = st.secrets.get("SUPABASE_TABLE", os.getenv("SUPABASE_TABLE", "ot_store"))
-		if not url or not key: raise ValueError("Config missing")
-		store = SupabaseStore(url, key, table)
-		store.ping()
-		return store, True
-	except Exception:
+		# Use Streamlit secrets for Redis config; fall back to local defaults
+		host = st.secrets.get("REDIS_HOST", "localhost")
+		port = int(st.secrets.get("REDIS_PORT", 6379))
+		password = st.secrets.get("REDIS_PASSWORD", None)
+		
+		r = redis.Redis(
+			host=host, 
+			port=port, 
+			password=password, 
+			decode_responses=True,
+			socket_timeout=2
+		)
+		r.ping()
+		return r, True
+	except Exception as e:
+		_LOG.warning(f"Redis connection failed: {e}. Falling back to memory.")
 		return InMemoryStore(), False
 
-R, supabase_live = get_store()
-redis_live = supabase_live  # Backward compatibility for UI indicators
+R, redis_live = get_store()
 
 # -- ACCOUNTS -------------------------------------------------
 def hash_pw(pw):
@@ -296,7 +239,6 @@ def terr_count(grid, teams_list):
 
 # -- SIMULATION ENGINE ---------------------------------------
 def simulate_epoch(gs):
-	# Hardik's 'Cooked' Resolution Logic
 	gs = dict(gs)
 	gs["epoch"] += 1
 	gs["epoch_end"] = (datetime.utcnow() + timedelta(seconds=EPOCH_DURATION_SECS)).isoformat()
@@ -307,7 +249,7 @@ def simulate_epoch(gs):
 	gs["queued_attacks"] = []
 	blocked_backstabbers = set()
 	
-	# 1. Resolve Suspicions (Judicial Discovery)
+	# 1. Resolve Suspicions
 	for actor, action in list(queued.items()):
 		if action["action"] == "SUSPICION":
 			target = action["target"]
@@ -344,7 +286,6 @@ def simulate_epoch(gs):
 			gs["ap"][actor] -= hits * ATTACK_COST_AP
 			gs["hp"][target] = max(0, int(gs["hp"][target]) - dmg)
 			
-			# Conquest: Steal 1 cell if hits >= 3
 			if hits >= 3:
 				t_cells = [i for i, c in enumerate(gs["grid"]) if c == target]
 				if t_cells:
@@ -372,7 +313,6 @@ def simulate_epoch(gs):
 	return gs
 
 def expand_territory(gs, team):
-	"""Instant action from our previous build (150 AP)."""
 	from config import get_amoeba_adjacency
 	adj = get_amoeba_adjacency(len(gs["grid"]))
 	my_cells = [i for i, owner in enumerate(gs["grid"]) if owner == team]

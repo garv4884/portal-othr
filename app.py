@@ -2,7 +2,7 @@
 OVERTHRONE :: app.py
 Entry point. Only handles page config and routing.
 Run: streamlit run app.py
-Requires: pip install streamlit supabase
+Requires: pip install streamlit redis
 """
 
 import streamlit as st
@@ -19,7 +19,7 @@ st.set_page_config(
 # ── Router ───────────────────────────────────────────────────
 from db import redis_live
 if not redis_live:
-    st.error("⚠️ SYSTEM DEGRADED: Supabase connection failed. Portal is running on Mock state (Local Only). Data will NOT persist. Please configure SUPABASE_URL and SUPABASE_KEY in secrets.")
+    st.error("⚠️ SYSTEM DEGRADED: Redis connection failed. Portal is running on Mock state (Local Only). Data will NOT persist. Ensure local Redis is running.")
 
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
